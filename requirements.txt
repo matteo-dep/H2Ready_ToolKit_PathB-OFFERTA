@@ -1,0 +1,8 @@
+streamlit>=1.49
+pandas
+numpy
+plotly
+requests
+openpyxl
+XlsxWriter
+numba
