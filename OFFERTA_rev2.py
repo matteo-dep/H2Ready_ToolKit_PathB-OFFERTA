@@ -617,7 +617,8 @@ with tab_dati:
                 else:
                     st.error(t["export_http"].format(c=resp.status_code))
             except Exception as e:
-                st.error(t["export_conn"].format(e=e))               "BESS_SOC_MWh": soc_h, "H2_kg": h2_h}).to_csv(buf, index=False)
+                st.error(t["export_conn"].format(e=e))               
+              "BESS_SOC_MWh": soc_h, "H2_kg": h2_h}).to_csv(buf, index=False)
     st.download_button(t["dl_hourly"], buf.getvalue(),
                        file_name="H2READY_profilo_orario.csv", mime="text/csv")
 
