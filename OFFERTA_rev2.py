@@ -510,21 +510,58 @@ with tab_red:
     if not R["ok_bess"] and R["e_disc_ko"] > 0:
         st.caption(t["red_bess_ko"].format(e=R["e_disc_ko"] / 1000.0))
 
-# ==========================================================================
-    # 3. SEZIONE EXPORT AL DATABASE CENTRALE (Stile Grafico Tool 2.2)
+# ==================================================================
+# TAB DATI ED EXPORT (Qui torniamo indietro con l'indentazione!)
+# ==================================================================
+with tab_dati:
+    st.markdown(t["riepilogo"])
+    
+    # 1. Tabella di Riepilogo
+    riepilogo = {
+        t["mode_label"]: t[f"mode_{modalita}"],
+        t["fer_tot"]: f"{taglia_fer:,.2f} MW",
+        t["ely_size"]: f"{R['ely_mw']:,.2f} MW",
+        t["bess_cap"]: f"{R['batt_mwh']:,.1f} MWh",
+        t["prod_h2"]: f"{R['prod_h2']/1000:,.1f} ton/y",
+        t["red_share"]: f"{R['quota_rfnbo']:.1f}%",
+        t["curt"]: f"{R['perc_curt']:.1f}%",
+        t["lcoh"]: f"€ {R['lcoh']:.2f}/kg",
+        t["capex"]: f"€ {R['capex_tot']/1e6:.2f} MLN",
+        t["payback"]: f"{R['payback']:.1f} y" if float(R["payback"]) < 50 else t["loss"],
+    }
+    st.table(pd.DataFrame(riepilogo.items(), columns=[t["col_voce"], "—"]))
+
+    # 2. Download Profilo Orario in CSV
+    buf = io.StringIO()
+    pd.DataFrame({
+        "ora": np.arange(core.ORE),
+        "FER_MW": gen_h,
+        "Ely_FER_MW": fer_h,
+        "Ely_Rete_MW": grid_h,
+        "Curtailment_MW": curt_h,
+        "BESS_SOC_MWh": soc_h,
+        "H2_kg": h2_h
+    }).to_csv(buf, index=False)
+    
+    st.download_button(
+        t["dl_hourly"],
+        buf.getvalue(),
+        file_name="H2READY_profilo_orario.csv",
+        mime="text/csv"
+    )
+
+    # ==========================================================================
+    # 3. SEZIONE EXPORT AL DATABASE CENTRALE (Stile Grafico)
     # ==========================================================================
     st.divider()
     st.header("💾 Esportazione")
     
-    # Campo di testo identico a quello della figura
     codice = st.text_input("Codice identificativo del Comune (es. 030043):", key="id_istat_export")
     
-    # Bottone primario (colorato) con l'icona
     if st.button("💾 Esporta nel database centrale", type="primary"):
         if not codice:
             st.error("Inserisci il codice identificativo prima di procedere.")
         else:
-            # Costruzione Payload Blindata
             payload = {
                 "ID_ISTAT": str(codice),
                 "T26_MODALITA": str(modalita),
@@ -547,7 +584,6 @@ with tab_red:
                 "T26_CO2_EVITATA_TON_ANNO": float(round(R["co2"], 0)),
             }
             
-            # Aggiunta dati superfici
             if usa_superfici:
                 payload.update({
                     "T26B_SUP_TERRA_HA": float(round(terra_ha, 2)),
@@ -565,10 +601,8 @@ with tab_red:
             if modalita == "copertura":
                 payload["T26_COPERTURA_PERC"] = float(round(R["prod_h2"] / target_kg * 100, 1)) if target_kg > 0 else 0.0
 
-            # URL del Webhook di Google
             WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbwpP0x0hBnhOadXA43IieWg9EusAuhaafpyeXpyaStssDd7Qo-jwnuOttAllzz8r5JS/exec"
 
-            # Trasmissione Dati
             try:
                 headers = {"Content-Type": "application/json"}
                 resp = requests.post(
