@@ -602,8 +602,16 @@ with tab_dati:
                 payload["T26_COPERTURA_PERC"] = float(round(R["prod_h2"] / target_kg * 100, 1)) if target_kg > 0 else 0.0
 
             # Invio HTTP con gestione automatica degli header JSON
+            # --- INIZIO TRASMISSIONE DATI ---
+            
+            # 1. Inserisci qui il tuo link di Google Apps Script (Webhook)
+            WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbwpP0x0hBnhOadXA43IieWg9EusAuhaafpyeXpyaStssDd7Qo-jwnuOttAllzz8r5JS/exec"
+            
             try:
+                # 2. Prepara le intestazioni per dire al server che è un file JSON
                 headers = {"Content-Type": "application/json"}
+                
+                # 3. SPEDISCE I DATI (Questo è il comando di trasmissione effettivo!)
                 resp = requests.post(
                     WEBHOOK_URL, 
                     data=json.dumps(payload), 
@@ -611,10 +619,12 @@ with tab_dati:
                     timeout=20
                 )
                 
+                # 4. Controlla se il server ha risposto "OK" (Codice 200 o 201)
                 if resp.status_code in [200, 201]:
                     st.success(t["export_ok"])
-                    st.balloons()
+                    st.balloons() # Animazione di successo
                 else:
                     st.error(t["export_http"].format(c=resp.status_code))
             except Exception as e:
+                # Se manca internet o il link è sbagliato, cattura l'errore qui
                 st.error(t["export_conn"].format(e=e))
