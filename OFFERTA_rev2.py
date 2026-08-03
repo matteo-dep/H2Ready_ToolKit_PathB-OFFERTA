@@ -511,10 +511,12 @@ with tab_red:
         st.caption(t["red_bess_ko"].format(e=R["e_disc_ko"] / 1000.0))
 
 # ==================================================================
-# TAB DATI ED EXPORT
+# TAB DATI ED EXPORT (Versione Blindata e Corretta)
 # ==================================================================
 with tab_dati:
     st.markdown(t["riepilogo"])
+    
+    # 1. Tabella di Riepilogo
     riepilogo = {
         t["mode_label"]: t[f"mode_{modalita}"],
         t["fer_tot"]: f"{taglia_fer:,.2f} MW",
@@ -525,14 +527,97 @@ with tab_dati:
         t["curt"]: f"{R['perc_curt']:.1f}%",
         t["lcoh"]: f"€ {R['lcoh']:.2f}/kg",
         t["capex"]: f"€ {R['capex_tot']/1e6:.2f} MLN",
-        t["payback"]: f"{R['payback']:.1f} y" if R["payback"] < 50 else t["loss"],
+        t["payback"]: f"{R['payback']:.1f} y" if float(R["payback"]) < 50 else t["loss"],
     }
     st.table(pd.DataFrame(riepilogo.items(), columns=[t["col_voce"], "—"]))
 
+    # 2. Download Profilo Orario (8760 ore)
     buf = io.StringIO()
-    pd.DataFrame({"ora": np.arange(core.ORE), "FER_MW": gen_h, "Ely_FER_MW": fer_h,
-                  "Ely_Rete_MW": grid_h, "Curtailment_MW": curt_h,
-                  "BESS_SOC_MWh": soc_h, "H2_kg": h2_h}).to_csv(buf, index=False)
+    pd.DataFrame({
+        "ora": np.arange(core.ORE),
+        "FER_MW": gen_h,
+        "Ely_FER_MW": fer_h,
+        "Ely_Rete_MW": grid_h,
+        "Curtailment_MW": curt_h,
+        "BESS_SOC_MWh": soc_h,
+        "H2_kg": h2_h
+    }).to_csv(buf, index=False)
+    
+    st.download_button(
+        t["dl_hourly"],
+        buf.getvalue(),
+        file_name="H2READY_profilo_orario.csv",
+        mime="text/csv"
+    )
+
+    st.markdown("---")
+    
+    # 3. Sezione Export al Database Centrale
+    st.subheader(t["sec_export"])
+    codice = st.text_input(t["input_istat"])
+    
+    if st.button(t["btn_export"]):
+        if not codice:
+            st.error(t["export_err"])
+        else:
+            # Conversione esplicita float/int per evitare crash di json.dumps con tipi numpy
+            payload = {
+                "ID_ISTAT": str(codice),
+                "T26_MODALITA": str(modalita),
+                "T26_ZONA": str(zona),
+                "T26_TARGET_H2_TON": float(round(target_kg / 1000, 2)) if usa_domanda else "N/A",
+                "T26_PV_TERRA_MW": float(round(R["mw"]["terra"], 2)),
+                "T26_PV_TETTI_MW": float(round(R["mw"]["tetti"], 2)),
+                "T26_PV_CAPANNONI_MW": float(round(R["mw"]["capannoni"], 2)),
+                "T26_EOLICO_MW": float(round(R["mw"]["eolico"], 2)),
+                "T26_TAGLIA_FER_INSTALLATA_MW": float(round(taglia_fer, 2)),
+                "T26_TAGLIA_ELETTROLIZZATORE_MW": float(round(R["ely_mw"], 2)),
+                "T26_CAPACITA_BESS_MWH": float(round(R["batt_mwh"], 2)),
+                "T26_PRODUZIONE_H2_TON_ANNO": float(round(R["prod_h2"] / 1000, 2)),
+                "T26_QUOTA_RFNBO_PERC": float(round(R["quota_rfnbo"], 1)),
+                "T26_CURTAILMENT_PERC": float(round(R["perc_curt"], 1)),
+                "T26_CAPEX_CONNESSIONI_EURO": float(round(R["c_conn"], 0)),
+                "T26_CAPEX_TOTALE_MLN": float(round(R["capex_tot"] / 1e6, 2)),
+                "T26_LCOH_EURO_KG": float(round(R["lcoh"], 2)),
+                "T26_PAYBACK_ANNI": float(round(R["payback"], 1)) if float(R["payback"]) < 99 else "N/A",
+                "T26_CO2_EVITATA_TON_ANNO": float(round(R["co2"], 0)),
+            }
+            
+            # Aggiunta dati superfici
+            if usa_superfici:
+                payload.update({
+                    "T26B_SUP_TERRA_HA": float(round(terra_ha, 2)),
+                    "T26B_SUP_TETTI_M2": float(round(tetti_m2, 0)),
+                    "T26B_SUP_CAPANNONI_M2": float(round(cap_m2, 0)),
+                })
+            else:
+                req = core.superfici_richieste(R["mw"], P)
+                payload.update({
+                    "T26B_SUP_TERRA_HA": float(round(req["ha_terra"], 2)),
+                    "T26B_SUP_TETTI_M2": float(round(req["m2_tetti"], 0)),
+                    "T26B_SUP_CAPANNONI_M2": float(round(req["m2_capannoni"], 0)),
+                })
+                
+            if modalita == "copertura":
+                payload["T26_COPERTURA_PERC"] = float(round(R["prod_h2"] / target_kg * 100, 1)) if target_kg > 0 else 0.0
+
+            # Invio HTTP con gestione automatica degli header JSON
+            try:
+                headers = {"Content-Type": "application/json"}
+                resp = requests.post(
+                    WEBHOOK_URL, 
+                    data=json.dumps(payload), 
+                    headers=headers, 
+                    timeout=20
+                )
+                
+                if resp.status_code in [200, 201]:
+                    st.success(t["export_ok"])
+                    st.balloons()
+                else:
+                    st.error(t["export_http"].format(c=resp.status_code))
+            except Exception as e:
+                st.error(t["export_conn"].format(e=e))               "BESS_SOC_MWh": soc_h, "H2_kg": h2_h}).to_csv(buf, index=False)
     st.download_button(t["dl_hourly"], buf.getvalue(),
                        file_name="H2READY_profilo_orario.csv", mime="text/csv")
 
