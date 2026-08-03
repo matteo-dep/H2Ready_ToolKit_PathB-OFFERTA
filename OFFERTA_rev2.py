@@ -552,7 +552,7 @@ with tab_dati:
                 "T26_PV_TETTI_MW": round(R["mw"]["tetti"], 2),
                 "T26_PV_CAPANNONI_MW": round(R["mw"]["capannoni"], 2),
                 "T26_EOLICO_MW": round(R["mw"]["eolico"], 2),
-                "T26_FER_TOTALE_MW": round(taglia_fer, 2),
+                "T26_TAGLIA_FER_INSTALLATA_MW": round(taglia_fer, 2),
                 "T26_TAGLIA_ELETTROLIZZATORE_MW": round(R["ely_mw"], 2),
                 "T26_CAPACITA_BESS_MWH": round(R["batt_mwh"], 2),
                 "T26_PRODUZIONE_H2_TON_ANNO": round(R["prod_h2"] / 1000, 2),
@@ -562,6 +562,7 @@ with tab_dati:
                 "T26_CAPEX_TOTALE_MLN": round(R["capex_tot"] / 1e6, 2),
                 "T26_LCOH_EURO_KG": round(R["lcoh"], 2),
                 "T26_PAYBACK_ANNI": round(R["payback"], 1) if R["payback"] < 99 else "N/A",
+                "T26_CO2_EVITATA_TON_ANNO": round(R["co2"], 0),
             }
             if usa_superfici:
                 payload.update({
