@@ -17,6 +17,19 @@ quindi "per MW" e scalano linearmente. Questo permette:
 
 con UNA sola scansione tecnica, riutilizzata da tutte e tre. L'economia e'
 aritmetica pura sugli aggregati: muovere un prezzo non ricalcola le 8760 ore.
+
+Impianto esistente (categoria "esterno")
+----------------------------------------
+Un impianto gia' in esercizio - idroelettrico, biomasse, cogenerazione - non
+scala con le altre categorie: la sua potenza e' fissa. Viene trattato come una
+quinta categoria la cui quota si ricalcola in modo che quota_esterno * taglia
+resti pari alla potenza nominale dichiarata. Non ha CAPEX (e' gia' costruito)
+ne' costo di connessione (e' gia' connesso); ha un costo dell'energia proprio.
+
+Sul piano normativo l'impianto esistente NON e' addizionale ai sensi dell'Atto
+Delegato (UE) 2023/1184 salvo dichiarazione esplicita: la quota di energia che
+ne proviene viene scorporata dall'idrogeno certificabile, con lo stesso
+criterio gia' usato per l'accumulo non conforme.
 """
 
 import os
@@ -89,6 +102,21 @@ CRF = (WACC * (1 + WACC) ** VITA) / ((1 + WACC) ** VITA - 1)
 KWH_KG_ELY = 55.0
 # Fattore di emissione evitato rispetto a idrogeno da SMR (kg CO2 / kg H2)
 CO2_PER_KG_H2 = 9.3
+
+# Categorie di generazione. "esterno" e' l'impianto gia' in esercizio.
+CATEGORIE = ("terra", "tetti", "capannoni", "eolico", "esterno")
+
+# Ore equivalenti tipiche per fonte: servono ai controlli di plausibilita'
+# sui profili caricati dall'utente. Fonte: pratica progettuale corrente.
+ORE_EQ_TIPICHE = {
+    "idro_fluente": (3000, 4500),
+    "idro_bacino": (2000, 3500),
+    "biomasse": (6000, 8000),
+    "cogenerazione": (5000, 8000),
+    "eolico": (1800, 2500),
+    "fotovoltaico": (1000, 1300),
+    "altro": (0, 8760),
+}
 
 
 def trova_file(nomi):
@@ -165,6 +193,97 @@ def carica_profili():
 
 
 # ==================================================================
+# PROFILO ESTERNO (impianto gia' in esercizio)
+# ==================================================================
+def leggi_profilo_esterno(file_o_path, potenza_mw=None):
+    """Legge un profilo orario da xlsx o csv e lo normalizza per MW installato.
+
+    Accetta il template H2READY (schede PROFILO/ANAGRAFICA) e qualunque file a
+    due colonne dove l'ultima contenga la potenza oraria in kW.
+
+    Ritorna (profilo_per_mw, potenza_mw, diagnostica).
+    """
+    diag = {"ok": False, "messaggi": [], "avvisi": []}
+
+    try:
+        nome = getattr(file_o_path, "name", str(file_o_path)).lower()
+        if nome.endswith(".csv"):
+            df = pd.read_csv(file_o_path)
+        else:
+            xl = pd.ExcelFile(file_o_path)
+            foglio = "PROFILO" if "PROFILO" in xl.sheet_names else xl.sheet_names[0]
+            df = pd.read_excel(xl, foglio)
+            # Potenza nominale dall'anagrafica, se il template la contiene
+            if potenza_mw is None and "ANAGRAFICA" in xl.sheet_names:
+                ana = pd.read_excel(xl, "ANAGRAFICA")
+                riga = ana[ana.iloc[:, 0].astype(str).str.contains("Potenza nominale", na=False)]
+                if not riga.empty:
+                    potenza_mw = float(riga.iloc[0, 1])
+    except Exception as e:
+        diag["messaggi"].append(f"File illeggibile: {e}")
+        return None, None, diag
+
+    col = "potenza_kW" if "potenza_kW" in df.columns else df.columns[-1]
+    serie = pd.to_numeric(df[col], errors="coerce")
+
+    if serie.isna().any():
+        diag["messaggi"].append(f"{int(serie.isna().sum())} celle non numeriche o vuote.")
+        return None, None, diag
+    if (serie < 0).any():
+        diag["messaggi"].append("Sono presenti valori negativi.")
+        return None, None, diag
+    if len(serie) != ORE:
+        diag["messaggi"].append(f"Il file contiene {len(serie)} righe invece di {ORE}.")
+        return None, None, diag
+
+    kw = serie.values.astype(float)
+    if not potenza_mw or potenza_mw <= 0:
+        potenza_mw = float(kw.max()) / 1000.0
+        diag["avvisi"].append("Potenza nominale non dichiarata: assunta pari al massimo del profilo.")
+    if kw.max() > potenza_mw * 1000.0 * 1.001:
+        diag["messaggi"].append(
+            f"Il profilo supera la potenza nominale dichiarata ({kw.max()/1000:.2f} > {potenza_mw:.2f} MW).")
+        return None, None, diag
+
+    energia_mwh = kw.sum() / 1000.0
+    ore_eq = energia_mwh / potenza_mw if potenza_mw > 0 else 0.0
+    zeri = int((kw == 0).sum())
+
+    # Il piu' lungo tratto consecutivo a zero: distingue la stagionalita'
+    # da un fermo impianto o da un buco nei dati.
+    massimo, corrente = 0, 0
+    for v in kw:
+        corrente = corrente + 1 if v == 0 else 0
+        massimo = max(massimo, corrente)
+
+    diag.update(ok=True, potenza_mw=potenza_mw, energia_mwh=energia_mwh,
+                ore_eq=ore_eq, ore_zero=zeri, zero_consecutive=massimo,
+                potenza_max_mw=kw.max() / 1000.0)
+    if massimo >= 500:
+        diag["avvisi"].append(
+            f"{massimo} ore consecutive a zero ({massimo/24:.0f} giorni): "
+            "probabile fermo impianto o dato mancante, non stagionalita'.")
+
+    return np.ascontiguousarray(kw / 1000.0 / potenza_mw, dtype=float), potenza_mw, diag
+
+
+def quote_con_esterno(quote_rel, potenza_esterno_mw, taglia_totale_mw):
+    """Ripartisce la taglia totale fra le nuove categorie e l'impianto esistente.
+
+    quote_rel: frazioni fra terra/tetti/capannoni/eolico, somma 1.
+    Garantisce quota_esterno * taglia_totale = potenza_esterno_mw.
+    """
+    q = {c: 0.0 for c in CATEGORIE}
+    if taglia_totale_mw <= 0:
+        return q
+    q_ext = min(max(potenza_esterno_mw / taglia_totale_mw, 0.0), 1.0)
+    for c in ("terra", "tetti", "capannoni", "eolico"):
+        q[c] = quote_rel.get(c, 0.0) * (1.0 - q_ext)
+    q["esterno"] = q_ext
+    return q
+
+
+# ==================================================================
 # DISPACCIAMENTO ORARIO
 # ==================================================================
 @njit(cache=True)
@@ -192,9 +311,9 @@ def _dispatch(gen, ely_mw, batt_mwh, grid_max_mw, eff_batt=0.90):
             soc -= discharge / se
             disc[t] = discharge
             e_fer[t] = avail + discharge
-            deficit = ely_mw - e_fer[t]
-            if deficit > 0.0 and grid_max_mw > 0.0:
-                e_grid[t] = min(deficit, grid_max_mw)
+        deficit = ely_mw - e_fer[t]
+        if deficit > 0.0 and grid_max_mw > 0.0:
+            e_grid[t] = min(deficit, grid_max_mw)
         soc_out[t] = soc
     return e_fer, e_grid, soc_out, curt, disc
 
@@ -251,25 +370,29 @@ def aggregati_e_dettaglio(gen_norm, ratio, batt_per_mw, grid_max_pct):
 # ==================================================================
 # PROFILO NORMALIZZATO E POTENZE
 # ==================================================================
-def profilo_normalizzato(profili, zona, quote, resa_tetti, resa_cap):
+def profilo_normalizzato(profili, zona, quote, resa_tetti, resa_cap, ext_norm=None):
     """Profilo di generazione per 1 MW di FER installata.
-    quote: dizionario di frazioni (terra, tetti, capannoni, eolico) con somma 1."""
+    quote: dizionario di frazioni (terra, tetti, capannoni, eolico, esterno) con somma 1.
+    ext_norm: profilo dell'impianto esistente normalizzato per il SUO MW."""
     pv = profili["pv_nord"] if zona == "nord" else profili["pv_sud"]
     wind = profili["wind_nord"] if zona == "nord" else profili["wind_sud"]
     gen = (pv * quote["terra"]
            + pv * quote["tetti"] * resa_tetti
            + pv * quote["capannoni"] * resa_cap
            + wind * quote["eolico"])
+    if ext_norm is not None and quote.get("esterno", 0.0) > 0:
+        gen = gen + ext_norm * quote["esterno"]
     return np.ascontiguousarray(gen, dtype=float), pv, wind
 
 
-def energie_per_categoria(mw, resa_tetti, resa_cap, somma_pv, somma_wind):
+def energie_per_categoria(mw, resa_tetti, resa_cap, somma_pv, somma_wind, somma_ext=0.0):
     """Energia annua prodotta da ciascuna categoria (MWh), in forma chiusa."""
     return {
         "terra": mw["terra"] * somma_pv,
         "tetti": mw["tetti"] * resa_tetti * somma_pv,
         "capannoni": mw["capannoni"] * resa_cap * somma_pv,
         "eolico": mw["eolico"] * somma_wind,
+        "esterno": mw.get("esterno", 0.0) * somma_ext,
     }
 
 
@@ -309,7 +432,10 @@ def n_punti(mw, n_dichiarato, taglia_media_kwp):
 
 
 def calcola_connessioni(mw, S):
-    """Restituisce CAPEX totale connessioni, dettaglio per riga e MWh soggetti a oneri di rete."""
+    """Restituisce CAPEX totale connessioni e dettaglio per riga.
+
+    L'impianto esistente e' gia' connesso: se lo si collega all'elettrolizzatore
+    con linea diretta si paga il solo cavidotto, altrimenti nulla."""
     n_tetti = n_punti(mw["tetti"], S["tetti"]["n"], S["tetti"]["taglia_media"])
     n_cap = n_punti(mw["capannoni"], S["capannoni"]["n"], S["capannoni"]["taglia_media"])
 
@@ -320,6 +446,14 @@ def calcola_connessioni(mw, S):
                                        S["capannoni"]["c_punto"], S["capannoni"]["c_km"])
     c_wind, liv_wind = connessione_utility(mw["eolico"], S["eolico"]["km"], True)
 
+    mw_ext = mw.get("esterno", 0.0)
+    s_ext = S.get("esterno", {"km": 0.0, "diretta": False, "c_km": 155000})
+    if mw_ext > 0 and s_ext.get("diretta"):
+        c_ext = s_ext.get("km", 0.0) * s_ext.get("c_km", 155000)
+        liv_ext = "AT" if mw_ext > 6 else "MT"
+    else:
+        c_ext, liv_ext = 0.0, ("rete" if mw_ext > 0 else "-")
+
     dettaglio = [
         {"cat": "terra", "mw": mw["terra"], "n": 1 if mw["terra"] > 0 else 0, "km": S["terra"]["km"],
          "diretta": S["terra"]["diretta"], "liv": liv_terra, "capex": c_terra},
@@ -329,8 +463,10 @@ def calcola_connessioni(mw, S):
          "diretta": S["capannoni"]["diretta"], "liv": liv_cap, "capex": c_cap},
         {"cat": "eolico", "mw": mw["eolico"], "n": 1 if mw["eolico"] > 0 else 0, "km": S["eolico"]["km"],
          "diretta": True, "liv": liv_wind, "capex": c_wind},
+        {"cat": "esterno", "mw": mw_ext, "n": 1 if mw_ext > 0 else 0, "km": s_ext.get("km", 0.0),
+         "diretta": bool(s_ext.get("diretta")), "liv": liv_ext, "capex": c_ext},
     ]
-    return c_terra + c_tetti + c_cap + c_wind, dettaglio
+    return c_terra + c_tetti + c_cap + c_wind + c_ext, dettaglio
 
 
 def bess_conforme(mw, S, batt_mwh):
@@ -349,15 +485,15 @@ def bess_conforme(mw, S, batt_mwh):
 def valuta(riga_tec, taglia_fer, quote, P, S):
     """Aritmetica pura sugli aggregati tecnici: nessuna simulazione oraria.
 
-    riga_tec : dict/Series con e_fer, e_grid, e_curt, e_grid_ok (per MW di FER)
-    taglia_fer : MW complessivi di FER installata
-    quote : frazioni per categoria (somma 1)
-    P : parametri economici e normativi
-    S : parametri di sito e connessione
+    riga_tec   : dict/Series con e_fer, e_grid, e_curt, e_grid_ok (per MW di FER)
+    taglia_fer : MW complessivi di FER installata, impianto esistente incluso
+    quote      : frazioni per categoria (somma 1)
+    P          : parametri economici e normativi
+    S          : parametri di sito e connessione
     """
     eff = P["eff_sistema"]
 
-    mw = {c: quote[c] * taglia_fer for c in ("terra", "tetti", "capannoni", "eolico")}
+    mw = {c: quote.get(c, 0.0) * taglia_fer for c in CATEGORIE}
     mw_pv = mw["terra"] + mw["tetti"] + mw["capannoni"]
     ely_mw = riga_tec["ratio"] * taglia_fer
     batt_mwh = P["bess_ratio"] * mw_pv if P["bess_on"] else 0.0
@@ -366,13 +502,14 @@ def valuta(riga_tec, taglia_fer, quote, P, S):
     e_grid = riga_tec["e_grid"] * taglia_fer
     e_curt = riga_tec["e_curt"] * taglia_fer
     e_grid_ok_mese = riga_tec["e_grid_ok"] * taglia_fer
-    e_disc = riga_tec.get("e_disc", 0.0) * taglia_fer if hasattr(riga_tec, "get") else riga_tec["e_disc"] * taglia_fer
+    e_disc = riga_tec["e_disc"] * taglia_fer
     e_tot = e_fer + e_grid
     prod_h2 = e_tot * 1000.0 / eff
     if prod_h2 <= 0:
         return None
 
-    e_cat = energie_per_categoria(mw, P["resa_tetti"], P["resa_cap"], P["somma_pv"], P["somma_wind"])
+    e_cat = energie_per_categoria(mw, P["resa_tetti"], P["resa_cap"],
+                                  P["somma_pv"], P["somma_wind"], P.get("somma_ext", 0.0))
     e_prodotta = sum(e_cat.values())
 
     # --- RED III ---
@@ -391,7 +528,19 @@ def valuta(riga_tec, taglia_fer, quote, P, S):
     # non decade l'intera produzione: e' l'energia transitata in batteria a non
     # soddisfare la correlazione temporale, quindi viene scorporata.
     e_disc_ko = 0.0 if ok_bess else e_disc
-    e_rfnbo = max(e_fer - e_disc_ko + e_grid_ok, 0.0) if prereq else 0.0
+
+    # Un impianto gia' in esercizio non e' addizionale ai sensi dell'Atto Delegato
+    # 2023/1184 (entrata in esercizio entro 36 mesi, assenza di sostegno pubblico)
+    # salvo dichiarazione esplicita. Si scorpora la quota di energia che ne proviene,
+    # con lo stesso criterio applicato all'accumulo non conforme.
+    ok_esterno = P.get("esterno_addizionale", True) or e_cat["esterno"] <= 0
+    if ok_esterno:
+        e_esterno_ko = 0.0
+    else:
+        q_ext = e_cat["esterno"] / e_prodotta if e_prodotta > 0 else 0.0
+        e_esterno_ko = e_fer * q_ext
+
+    e_rfnbo = max(e_fer - e_disc_ko - e_esterno_ko + e_grid_ok, 0.0) if prereq else 0.0
     h2_rfnbo = e_rfnbo * 1000.0 / eff
     h2_nc = prod_h2 - h2_rfnbo
 
@@ -403,6 +552,7 @@ def valuta(riga_tec, taglia_fer, quote, P, S):
     c_conn, dettaglio_conn = calcola_connessioni(mw, S)
     c_fer = 0.0
     if P["autoproduzione"]:
+        # L'impianto esistente non entra nel CAPEX: e' gia' costruito e pagato.
         c_fer = (mw["terra"] * 1000 * P["capex_pv_terra"]
                  + mw["tetti"] * 1000 * P["capex_pv_tetti"]
                  + mw["capannoni"] * 1000 * P["capex_pv_cap"]
@@ -410,18 +560,30 @@ def valuta(riga_tec, taglia_fer, quote, P, S):
     capex_tot = c_ely + c_batt + c_stocc + c_comp + c_conn + c_fer
 
     # --- OPEX ---
+    # L'energia dell'impianto esistente si paga sempre: anche in autoproduzione
+    # e' un impianto di terzi o gia' ammortizzato, con un proprio prezzo di cessione.
+    if P["paga_solo_assorbita"]:
+        q_use = (e_fer / e_prodotta) if e_prodotta > 0 else 0.0
+        opex_ext = e_cat["esterno"] * q_use * P.get("cfd_esterno", 90.0)
+    else:
+        opex_ext = e_cat["esterno"] * P.get("cfd_esterno", 90.0)
+
     if P["autoproduzione"]:
-        opex_fer = 0.0
+        opex_fer = opex_ext
     else:
         e_pv = e_cat["terra"] + e_cat["tetti"] + e_cat["capannoni"]
         if P["paga_solo_assorbita"]:
-            q_pv = e_pv / e_prodotta if e_prodotta > 0 else 0.0
-            opex_fer = e_fer * (q_pv * P["cfd_pv"] + (1 - q_pv) * P["cfd_wind"])
+            e_nuovi = e_pv + e_cat["eolico"]
+            q_pv = e_pv / e_nuovi if e_nuovi > 0 else 0.0
+            e_fer_nuovi = e_fer * (e_nuovi / e_prodotta if e_prodotta > 0 else 0.0)
+            opex_fer = e_fer_nuovi * (q_pv * P["cfd_pv"] + (1 - q_pv) * P["cfd_wind"]) + opex_ext
         else:
-            opex_fer = e_pv * P["cfd_pv"] + e_cat["eolico"] * P["cfd_wind"]
+            opex_fer = e_pv * P["cfd_pv"] + e_cat["eolico"] * P["cfd_wind"] + opex_ext
 
     quota_uso = (e_fer / e_prodotta) if e_prodotta > 0 else 0.0
     e_wheel = sum(e_cat[c] for c in ("terra", "tetti", "capannoni") if not S[c]["diretta"])
+    if mw["esterno"] > 0 and not S.get("esterno", {}).get("diretta", False):
+        e_wheel += e_cat["esterno"]
     opex_wheel = e_wheel * quota_uso * P["oneri_rete"]
     opex_grid = e_grid * P["grid_price"]
     opex_maint = capex_tot * 0.03
@@ -439,6 +601,7 @@ def valuta(riga_tec, taglia_fer, quote, P, S):
         "prod_h2": prod_h2, "h2_rfnbo": h2_rfnbo, "h2_nc": h2_nc,
         "quota_rfnbo": (h2_rfnbo / prod_h2 * 100) if prod_h2 > 0 else 0.0,
         "prereq": prereq, "ok_bess": ok_bess, "e_disc": e_disc, "e_disc_ko": e_disc_ko,
+        "ok_esterno": ok_esterno, "e_esterno_ko": e_esterno_ko,
         "c_ely": c_ely, "c_batt": c_batt, "c_stocc": c_stocc, "c_comp": c_comp,
         "c_conn": c_conn, "c_fer": c_fer, "capex_tot": capex_tot, "dettaglio_conn": dettaglio_conn,
         "opex_fer": opex_fer, "opex_wheel": opex_wheel, "opex_grid": opex_grid,
@@ -477,3 +640,41 @@ def ottimizza(df_tec, taglia_fer_fn, quote, P, S):
         if v:
             esiti.append(v)
     return esiti
+
+
+def risolvi_domanda(profili, zona, quote_rel, resa_tetti, resa_cap, ext_norm,
+                    potenza_esterno_mw, target_kg, batt_per_mw_fn, grid_max_pct,
+                    ratios, P, S, iterazioni=12, tolleranza=0.001):
+    """Modalita' domanda con impianto esistente: punto fisso sulla taglia totale.
+
+    Senza impianto esistente il problema e' diretto: la taglia scala il profilo.
+    Con un impianto di potenza fissa il profilo combinato dipende dalla taglia
+    totale, che a sua volta dipende dal profilo. Si itera: converge in due o tre
+    passaggi perche' la forma del profilo cambia poco fra un'iterazione e l'altra.
+
+    Ritorna (esiti, quote, gen_norm, pv, wind, n_iterazioni).
+    """
+    taglia = max(potenza_esterno_mw * 2.0, 1.0)
+    esiti, quote, gen_norm, pv, wind = [], {}, None, None, None
+
+    for k in range(1, iterazioni + 1):
+        quote = quote_con_esterno(quote_rel, potenza_esterno_mw, taglia)
+        gen_norm, pv, wind = profilo_normalizzato(profili, zona, quote, resa_tetti, resa_cap, ext_norm)
+        batt_per_mw = batt_per_mw_fn(quote)
+        df_tec = scan_tecnico(gen_norm, batt_per_mw, grid_max_pct, ratios)
+        # La taglia totale non puo' scendere sotto l'impianto gia' esistente:
+        # se questo da solo supera il target, il dimensionamento si ferma li'
+        # e la sovrapproduzione va mostrata, non nascosta rimpicciolendolo.
+        def _taglia(r):
+            return max(scala_per_domanda(r, target_kg, P["eff_sistema"]), potenza_esterno_mw)
+
+        esiti = ottimizza(df_tec, _taglia, quote, P, S)
+        if not esiti:
+            return [], quote, gen_norm, pv, wind, k
+        nuova = min(esiti, key=lambda v: v["lcoh"])["taglia_fer"]
+        if abs(nuova - taglia) / max(taglia, 1e-6) < tolleranza:
+            taglia = nuova
+            break
+        taglia = nuova
+
+    return esiti, quote, gen_norm, pv, wind, k
