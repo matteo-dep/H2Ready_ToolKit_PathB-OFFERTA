@@ -61,6 +61,12 @@ t = _Testi(testi(lang))
 # ==================================================================
 TX = {
     "it": {
+        "back": "← Modifica parametri",
+        "recap": "**{m}** · zona {z}{e}",
+        "back": "← Edit parameters",
+        "recap": "**{m}** · zone {z}{e}",
+        "back": "← Uredi parametre",
+        "recap": "**{m}** · cona {z}{e}",
         "setup": "📝 Scheda di compilazione",
         "setup_hint": "Compila i parametri, poi avvia il dimensionamento. La simulazione gira su 8.760 ore: parte solo quando lo chiedi.",
         "run": "🚀 Avvia dimensionamento",
@@ -170,15 +176,6 @@ PNIEC_TOTALE_TON = 252_000.0
 # Equivalenti fisici: ordini di grandezza, non valori puntuali
 EQ_BUS_TON, EQ_CAMION_TON, EQ_FORNO_TON = 9.0, 8.0, 3000.0
 
-FONTI_EXT = {
-    "idro_fluente": "Idroelettrico ad acqua fluente",
-    "idro_bacino": "Idroelettrico a bacino",
-    "biomasse": "Biomasse",
-    "cogenerazione": "Cogenerazione",
-    "eolico": "Eolico",
-    "fotovoltaico": "Fotovoltaico",
-    "altro": "Altro",
-}
 
 # ==================================================================
 # INTESTAZIONE
@@ -193,199 +190,384 @@ st.markdown("""
     </p>
 """, unsafe_allow_html=True)
 
-with st.expander(t["readme_expander"]):
-    nome_md = f"README_metodologia_{lang}.md"
-    try:
-        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), nome_md), "r", encoding="utf-8") as f:
-            st.markdown(f.read())
-    except FileNotFoundError:
-        st.warning(t["readme_missing"].format(f=nome_md))
-
-profili, esito = core.carica_profili()
-if esito["ok"]:
-    st.caption(f"{t['data_ok']}: `{esito['file_pv']}` · `{esito['file_wind']}`")
-else:
-    st.error(t["data_ko"])
-    with st.expander(t["data_diag"]):
-        if esito["mancanti"]:
-            st.write(t["data_diag_cols"])
-            st.code("\n".join(esito["mancanti"]))
-        if esito["errore"]:
-            st.write(f"{t['data_diag_err']} `{esito['errore']}`")
-        st.info(t["data_diag_hint"])
+profili, esito_dati = core.carica_profili()
 
 # ==================================================================
-# SIDEBAR - FUORI DALLA SCHEDA
-# La modalita' e l'impianto esistente cambiano la forma della scheda,
-# quindi devono reagire subito: dentro un form non potrebbero.
+# STATO DELLA PAGINA
+# Due fasi: la scheda di compilazione e i risultati. I parametri non
+# vivono nei widget ma in un dizionario proprio: quando il modulo esce
+# dalla vista Streamlit dimentica i valori dei widget, non quelli in
+# session_state sotto una chiave nostra.
 # ==================================================================
-st.sidebar.header(t["mode_header"])
-modalita = st.sidebar.radio(t["mode_label"], ["domanda", "superfici", "copertura"],
-                            format_func=lambda k: t[f"mode_{k}"])
-usa_superfici = modalita in ("superfici", "copertura")
-usa_domanda = modalita in ("domanda", "copertura")
+if "fase" not in st.session_state:
+    st.session_state["fase"] = "scheda"
+C = st.session_state.get("cfg", {})
 
-st.sidebar.markdown("---")
-st.sidebar.subheader(tx["ext_head"])
-ext_on = st.sidebar.checkbox(tx["ext_on"], value=False, help=tx["ext_help"])
 
-ext_norm, ext_mw, ext_diag, ext_fonte = None, 0.0, None, "idro_fluente"
-if ext_on:
-    up = st.sidebar.file_uploader(tx["ext_file"], type=["xlsx", "csv"], help=tx["ext_file_help"])
-    ext_fonte = st.sidebar.selectbox(tx["ext_fonte"], list(FONTI_EXT.keys()),
-                                     format_func=lambda k: FONTI_EXT[k])
-    mw_dich = st.sidebar.number_input(tx["ext_mw"], 0.0, 500.0, 11.0, step=0.5)
-    if up is not None:
-        ext_norm, ext_mw, ext_diag = core.leggi_profilo_esterno(up, mw_dich if mw_dich > 0 else None)
-        if ext_diag["ok"]:
-            st.sidebar.success(tx["ext_ok"].format(mw=ext_mw, e=ext_diag["energia_mwh"], h=ext_diag["ore_eq"]))
-            a, b = core.ORE_EQ_TIPICHE.get(ext_fonte, (0, 8760))
-            if not (a <= ext_diag["ore_eq"] <= b):
-                st.sidebar.warning(tx["ext_warn_h"].format(h=ext_diag["ore_eq"], a=a, b=b))
-            for m in ext_diag["avvisi"]:
-                st.sidebar.warning(m)
-        else:
-            st.sidebar.error(tx["ext_ko"])
-            for m in ext_diag["messaggi"]:
-                st.sidebar.caption(f"· {m}")
-            ext_norm, ext_mw = None, 0.0
+def dv(chiave, predefinito):
+    """Valore da riproporre: quello gia' scelto, altrimenti il predefinito."""
+    return C.get(chiave, predefinito)
 
-# ==================================================================
-# SIDEBAR - SCHEDA DI COMPILAZIONE
-# ==================================================================
+
+def di(chiave, opzioni, predefinito):
+    """Indice da riproporre per selectbox e radio."""
+    opzioni = list(opzioni)
+    v = C.get(chiave, predefinito)
+    return opzioni.index(v) if v in opzioni else opzioni.index(predefinito)
+
+
 MODI_CONN = ["diretta", "rete"]
+FONTI_EXT = {
+    "idro_fluente": "Idroelettrico ad acqua fluente",
+    "idro_bacino": "Idroelettrico a bacino",
+    "biomasse": "Biomasse",
+    "cogenerazione": "Cogenerazione",
+    "eolico": "Eolico",
+    "fotovoltaico": "Fotovoltaico",
+    "altro": "Altro",
+}
 
-with st.sidebar.form("scheda"):
-    st.markdown(f"### {tx['setup']}")
+# ==================================================================
+# FASE 1 - SCHEDA DI COMPILAZIONE
+# ==================================================================
+if st.session_state["fase"] == "scheda":
+
+    with st.expander(t["readme_expander"]):
+        nome_md = f"README_metodologia_{lang}.md"
+        try:
+            with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), nome_md),
+                      "r", encoding="utf-8") as f:
+                st.markdown(f.read())
+        except FileNotFoundError:
+            st.warning(t["readme_missing"].format(f=nome_md))
+
+    if esito_dati["ok"]:
+        st.caption(f"{t['data_ok']}: `{esito_dati['file_pv']}` · `{esito_dati['file_wind']}`")
+    else:
+        st.error(t["data_ko"])
+        with st.expander(t["data_diag"]):
+            if esito_dati["mancanti"]:
+                st.write(t["data_diag_cols"])
+                st.code("\n".join(esito_dati["mancanti"]))
+            if esito_dati["errore"]:
+                st.write(f"{t['data_diag_err']} `{esito_dati['errore']}`")
+            st.info(t["data_diag_hint"])
+
+    st.markdown("---")
+    st.header(tx["setup"])
     st.caption(tx["setup_hint"])
 
-    zona = st.selectbox(t["sb_zona"], ["nord", "sud"], format_func=lambda k: t[f"zona_{k}"])
+    # --- Scelte che cambiano la forma della scheda: fuori dal modulo,
+    #     perche' devono reagire subito.
+    c1, c2 = st.columns([3, 2])
+    with c1:
+        modalita = st.radio(t["mode_label"], ["domanda", "superfici", "copertura"],
+                            index=di("modalita", ["domanda", "superfici", "copertura"], "domanda"),
+                            format_func=lambda k: t[f"mode_{k}"], horizontal=True)
+    with c2:
+        zona = st.selectbox(t["sb_zona"], ["nord", "sud"],
+                            index=di("zona", ["nord", "sud"], "nord"),
+                            format_func=lambda k: t[f"zona_{k}"])
+    st.info(t[f"mode_help_{modalita}"])
 
-    target_ton = 1000
-    if usa_domanda:
-        with st.expander(t["sb_target"], expanded=True):
-            target_ton = st.number_input(t["target_h2"], 1, 1000000, 1000)
-            nahv_target = st.number_input(tx["bm_nahv"], 0, 1000000, 0, step=500,
-                                          help=tx["bm_nahv_help"])
-    else:
-        nahv_target = 0
+    usa_superfici = modalita in ("superfici", "copertura")
+    usa_domanda = modalita in ("domanda", "copertura")
 
-    q_terra = q_tetti = q_cap = q_wind = 0
-    if modalita == "domanda":
-        with st.expander(t["sb_alloc"], expanded=True):
-            st.caption(t["alloc_help"])
-            q_terra = st.slider(t["alloc_terra"], 0, 100, 60)
-            q_tetti = st.slider(t["alloc_tetti"], 0, 100, 10)
-            q_cap = st.slider(t["alloc_cap"], 0, 100, 30)
-            q_wind = st.slider(t["alloc_wind"], 0, 100, 0)
+    # --- Impianto esistente: il caricamento va validato subito ---
+    with st.expander(tx["ext_head"], expanded=bool(dv("ext_on", False))):
+        ext_on = st.checkbox(tx["ext_on"], value=dv("ext_on", False), help=tx["ext_help"])
+        ext_norm, ext_mw, ext_fonte = None, 0.0, "idro_fluente"
+        if ext_on:
+            e1, e2, e3 = st.columns([3, 2, 2])
+            with e1:
+                up = st.file_uploader(tx["ext_file"], type=["xlsx", "csv"], help=tx["ext_file_help"])
+            with e2:
+                ext_fonte = st.selectbox(tx["ext_fonte"], list(FONTI_EXT.keys()),
+                                         index=di("ext_fonte", list(FONTI_EXT.keys()), "idro_fluente"),
+                                         format_func=lambda k: FONTI_EXT[k])
+            with e3:
+                mw_dich = st.number_input(tx["ext_mw"], 0.0, 500.0, dv("ext_mw", 11.0), step=0.5)
 
-    def _conn(pref, default_mode, def_km, def_cp, def_ck, con_punti):
-        km = st.slider(t["dist"], 0.1, 30.0, def_km, key=f"{pref}_km")
-        modo = st.radio(t["conn_mode"], MODI_CONN, index=MODI_CONN.index(default_mode),
-                        format_func=lambda k: t[f"conn_{k}"], key=f"{pref}_mode")
-        cp = ck = 0.0
-        if con_punti:
-            cp = st.number_input(t["c_punto"], 0, 500000, def_cp, step=1000, key=f"{pref}_cp")
-            ck = st.number_input(t["c_km"], 0, 500000, def_ck, step=5000, key=f"{pref}_ck")
-        return km, (modo == "diretta"), cp, ck
+            if up is not None:
+                st.session_state["ext_raw"] = up.getvalue()
+                st.session_state["ext_nome"] = up.name
+            raw = st.session_state.get("ext_raw")
 
-    with st.expander(t["sb_terra"], expanded=usa_superfici):
-        terra_ha = st.number_input(t["ha"], 0.0, 10000.0, 10.0, step=0.5) if usa_superfici else 0.0
-        terra_use = st.slider(t["use"], 10, 100, 90, key="terra_use")
-        terra_dens = st.slider(t["dens_ha"], 0.3, 1.2, 0.70, step=0.05)
-        terra_km, terra_dir, _, _ = _conn("terra", "diretta", 2.0, 0, 0, False)
+            if raw is not None:
+                buf_ext = io.BytesIO(raw)
+                buf_ext.name = st.session_state.get("ext_nome", "profilo.xlsx")
+                ext_norm, ext_mw, ext_diag = core.leggi_profilo_esterno(
+                    buf_ext, mw_dich if mw_dich > 0 else None)
+                if ext_diag["ok"]:
+                    st.success(tx["ext_ok"].format(mw=ext_mw, e=ext_diag["energia_mwh"],
+                                                   h=ext_diag["ore_eq"]))
+                    a, b = core.ORE_EQ_TIPICHE.get(ext_fonte, (0, 8760))
+                    if not (a <= ext_diag["ore_eq"] <= b):
+                        st.warning(tx["ext_warn_h"].format(h=ext_diag["ore_eq"], a=a, b=b))
+                    for m in ext_diag["avvisi"]:
+                        st.warning(m)
+                else:
+                    st.error(tx["ext_ko"])
+                    for m in ext_diag["messaggi"]:
+                        st.caption(f"· {m}")
+                    ext_norm, ext_mw = None, 0.0
 
-    with st.expander(t["sb_tetti"], expanded=usa_superfici):
-        tetti_m2 = st.number_input(t["m2"], 0.0, 5000000.0, 20000.0, step=500.0, key="tm2") if usa_superfici else 0.0
-        tetti_use = st.slider(t["use"], 10, 100, 50, key="tetti_use")
-        tetti_dens = st.slider(t["dens_m2"], 0.10, 0.25, 0.18, step=0.01, key="tetti_dens")
-        tetti_resa = st.slider(t["resa"], 70, 105, 96, key="tetti_resa")
-        tetti_n = st.number_input(t["n_punti"], 0, 1000, 10, key="tetti_n") if usa_superfici else None
-        tetti_taglia = None if usa_superfici else st.number_input(t["taglia_media"], 3, 1000, 50, key="tetti_tm")
-        tetti_km, tetti_dir, tetti_cp, tetti_ck = _conn("tetti", "rete", 3.0, 9000, 90000, True)
+    # --- Il resto in un modulo: nulla si ricalcola finche' non si preme ---
+    with st.form("scheda"):
+        tab_imp, tab_conn, tab_sys, tab_red, tab_eco = st.tabs(
+            ["🏗️ " + t["sec_impianti"], "🔌 " + t["tab_conn"], "⚡ " + t["sb_ely"],
+             "📜 " + t["sb_red"], "💶 " + t["sb_costi"]])
 
-    with st.expander(t["sb_cap"], expanded=usa_superfici):
-        cap_m2 = st.number_input(t["m2"], 0.0, 5000000.0, 50000.0, step=1000.0, key="cm2") if usa_superfici else 0.0
-        cap_use = st.slider(t["use"], 10, 100, 70, key="cap_use")
-        cap_dens = st.slider(t["dens_m2"], 0.10, 0.25, 0.18, step=0.01, key="cap_dens")
-        cap_resa = st.slider(t["resa"], 70, 105, 93, key="cap_resa")
-        cap_n = st.number_input(t["n_punti"], 0, 500, 3, key="cap_n") if usa_superfici else None
-        cap_taglia = None if usa_superfici else st.number_input(t["taglia_media"], 10, 5000, 500, key="cap_tm")
-        cap_km, cap_dir, cap_cp, cap_ck = _conn("cap", "diretta", 1.5, 45000, 155000, True)
+        # ---------- impianti ----------
+        with tab_imp:
+            target_ton, nahv_target = dv("target_ton", 1000), dv("nahv_target", 0)
+            if usa_domanda:
+                g1, g2 = st.columns(2)
+                target_ton = g1.number_input(t["target_h2"], 1, 1000000, int(dv("target_ton", 1000)))
+                nahv_target = g2.number_input(tx["bm_nahv"], 0, 1000000, int(dv("nahv_target", 0)),
+                                              step=500, help=tx["bm_nahv_help"])
 
-    with st.expander(t["sb_wind"], expanded=False):
-        wind_n = st.number_input(t["wind_n"], 0, 100, 0) if usa_superfici else 0
-        wind_p = st.slider(t["wind_p"], 0.5, 8.0, 3.0, step=0.5) if usa_superfici else 3.0
-        wind_km = st.slider(t["dist"], 0.1, 30.0, 5.0, key="wind_km")
+            q_terra = q_tetti = q_cap = q_wind = 0
+            if modalita == "domanda":
+                st.caption(t["alloc_help"])
+                a1, a2, a3, a4 = st.columns(4)
+                q_terra = a1.slider(t["alloc_terra"], 0, 100, int(dv("q_terra", 60)))
+                q_tetti = a2.slider(t["alloc_tetti"], 0, 100, int(dv("q_tetti", 10)))
+                q_cap = a3.slider(t["alloc_cap"], 0, 100, int(dv("q_cap", 30)))
+                q_wind = a4.slider(t["alloc_wind"], 0, 100, int(dv("q_wind", 0)))
+                st.markdown("---")
 
-    if ext_on:
-        with st.expander(tx["ext_head"], expanded=True):
-            ext_cfd = st.number_input(tx["ext_cfd"], 0.0, 400.0, 90.0, step=5.0)
-            ext_dir = st.checkbox(tx["ext_conn"], value=False)
-            ext_km = st.slider(tx["ext_km"], 0.1, 30.0, 2.0)
-            ext_add = st.checkbox(tx["ext_add"], value=False, help=tx["ext_add_help"])
-    else:
-        ext_cfd, ext_dir, ext_km, ext_add = 90.0, False, 0.0, True
+            p1, p2, p3 = st.columns(3)
+            with p1:
+                st.markdown(f"**{t['sb_terra']}**")
+                terra_ha = st.number_input(t["ha"], 0.0, 10000.0, dv("terra_ha", 10.0),
+                                           step=0.5) if usa_superfici else 0.0
+                terra_use = st.slider(t["use"], 10, 100, int(dv("terra_use", 90)), key="k_terra_use")
+                terra_dens = st.slider(t["dens_ha"], 0.3, 1.2, dv("terra_dens", 0.70), step=0.05)
+            with p2:
+                st.markdown(f"**{t['sb_tetti']}**")
+                tetti_m2 = st.number_input(t["m2"], 0.0, 5000000.0, dv("tetti_m2", 20000.0),
+                                           step=500.0, key="k_tm2") if usa_superfici else 0.0
+                tetti_use = st.slider(t["use"], 10, 100, int(dv("tetti_use", 50)), key="k_tetti_use")
+                tetti_dens = st.slider(t["dens_m2"], 0.10, 0.25, dv("tetti_dens", 0.18),
+                                       step=0.01, key="k_tetti_dens")
+                tetti_resa = st.slider(t["resa"], 70, 105, int(dv("tetti_resa", 96)), key="k_tetti_resa")
+                if usa_superfici:
+                    tetti_n = st.number_input(t["n_punti"], 0, 1000, int(dv("tetti_n", 10)), key="k_tetti_n")
+                    tetti_taglia = None
+                else:
+                    tetti_n = None
+                    tetti_taglia = st.number_input(t["taglia_media"], 3, 1000,
+                                                   int(dv("tetti_taglia", 50)), key="k_tetti_tm")
+            with p3:
+                st.markdown(f"**{t['sb_cap']}**")
+                cap_m2 = st.number_input(t["m2"], 0.0, 5000000.0, dv("cap_m2", 50000.0),
+                                         step=1000.0, key="k_cm2") if usa_superfici else 0.0
+                cap_use = st.slider(t["use"], 10, 100, int(dv("cap_use", 70)), key="k_cap_use")
+                cap_dens = st.slider(t["dens_m2"], 0.10, 0.25, dv("cap_dens", 0.18),
+                                     step=0.01, key="k_cap_dens")
+                cap_resa = st.slider(t["resa"], 70, 105, int(dv("cap_resa", 93)), key="k_cap_resa")
+                if usa_superfici:
+                    cap_n = st.number_input(t["n_punti"], 0, 500, int(dv("cap_n", 3)), key="k_cap_n")
+                    cap_taglia = None
+                else:
+                    cap_n = None
+                    cap_taglia = st.number_input(t["taglia_media"], 10, 5000,
+                                                 int(dv("cap_taglia", 500)), key="k_cap_tm")
 
-    with st.expander(t["sb_bess"], expanded=False):
-        bess_on = st.toggle(t["bess_on"], value=True)
-        bess_ratio = st.slider(t["bess_ratio"], 0.0, 5.0, 3.0, step=0.5)
+            st.markdown("---")
+            w1, w2, w3 = st.columns(3)
+            w1.markdown(f"**{t['sb_wind']}**")
+            wind_n = w2.number_input(t["wind_n"], 0, 100, int(dv("wind_n", 0))) if usa_superfici else 0
+            wind_p = w3.slider(t["wind_p"], 0.5, 8.0, dv("wind_p", 3.0), step=0.5) if usa_superfici else 3.0
 
-    with st.expander(t["sb_ely"], expanded=False):
-        ely_auto = st.radio(t["ely_mode"], [True, False],
-                            format_func=lambda k: t["ely_auto"] if k else t["ely_man"])
-        ely_pct = st.slider(t["ely_ratio"], 10, 120, 60, step=5)
+        # ---------- connessioni ----------
+        with tab_conn:
+            def blocco_conn(titolo, pref, modo_def, km_def, cp_def, ck_def, con_punti):
+                st.markdown(f"**{titolo}**")
+                x1, x2, x3, x4 = st.columns([2, 2, 2, 2])
+                km = x1.slider(t["dist"], 0.1, 30.0, dv(f"{pref}_km", km_def), key=f"k_{pref}_km")
+                modo = x2.radio(t["conn_mode"], MODI_CONN,
+                                index=di(f"{pref}_modo", MODI_CONN, modo_def),
+                                format_func=lambda k: t[f"conn_{k}"], key=f"k_{pref}_mode",
+                                horizontal=True)
+                cp = ck = 0.0
+                if con_punti:
+                    cp = x3.number_input(t["c_punto"], 0, 500000, int(dv(f"{pref}_cp", cp_def)),
+                                         step=1000, key=f"k_{pref}_cp")
+                    ck = x4.number_input(t["c_km"], 0, 500000, int(dv(f"{pref}_ck", ck_def)),
+                                         step=5000, key=f"k_{pref}_ck")
+                return km, modo, cp, ck
 
-    with st.expander(t["sb_red"], expanded=False):
-        red_mensile = st.radio(t["red_scen"], [False, True],
-                               format_func=lambda k: t["red_scen_month"] if k else t["red_scen_hour"])
-        red_add = st.checkbox(t["red_add"], value=True)
-        red_noaid = st.checkbox(t["red_noaid"], value=True)
-        red_zone = st.checkbox(t["red_zone"], value=True)
-        st.markdown(f"**{t['red_grid_header']}**")
-        grid_max_pct = st.slider(t["red_grid_max"], 0, 100, 0, step=5)
-        grid_price = st.slider(t["red_grid_price"], 20.0, 300.0, 110.0)
-        grid_cert = st.checkbox(t["red_grid_cert"], value=False)
+            terra_km, terra_modo, _, _ = blocco_conn(t["sb_terra"], "terra", "diretta", 2.0, 0, 0, False)
+            st.markdown("---")
+            tetti_km, tetti_modo, tetti_cp, tetti_ck = blocco_conn(t["sb_tetti"], "tetti", "rete", 3.0, 9000, 90000, True)
+            st.markdown("---")
+            cap_km, cap_modo, cap_cp, cap_ck = blocco_conn(t["sb_cap"], "cap", "diretta", 1.5, 45000, 155000, True)
+            st.markdown("---")
+            wind_km = st.slider(f"{t['sb_wind']} — {t['dist']}", 0.1, 30.0, dv("wind_km", 5.0), key="k_wind_km")
+            terra_dir, tetti_dir, cap_dir = (terra_modo == "diretta"), (tetti_modo == "diretta"), (cap_modo == "diretta")
 
-    with st.expander(t["sb_costi"], expanded=False):
-        autoprod = st.radio(t["energy_model"], [False, True],
-                            format_func=lambda k: t["model_own"] if k else t["model_ppa"])
-        paga_assorbita = st.checkbox(t["pay_absorbed"], value=False, help=t["pay_help"])
-        cfd_pv = st.slider("CfD PV (€/MWh)", 30.0, 120.0, 60.0)
-        cfd_wind = st.slider("CfD Wind (€/MWh)", 30.0, 150.0, 80.0)
-        oneri_rete = st.slider(t["wheel"], 0.0, 80.0, 25.0)
-        capex_ely = st.slider("CAPEX Ely (€/kW)", 500, 2000, 1000)
-        capex_batt = st.slider("CAPEX BESS (€/kWh)", 100, 500, 150)
-        capex_pv_terra = st.slider("CAPEX PV terra (€/kW)", 400, 1200, 700)
-        capex_pv_tetti = st.slider("CAPEX PV tetti (€/kW)", 500, 1800, 1000)
-        capex_pv_cap = st.slider("CAPEX PV capannoni (€/kW)", 500, 1600, 850)
-        capex_wind_kw = st.slider("CAPEX Wind (€/kW)", 900, 2500, 1500)
+            if ext_on:
+                st.markdown("---")
+                st.markdown(f"**{tx['ext_head']}**")
+                y1, y2, y3, y4 = st.columns(4)
+                ext_cfd = y1.number_input(tx["ext_cfd"], 0.0, 400.0, dv("ext_cfd", 90.0), step=5.0)
+                ext_dir = y2.checkbox(tx["ext_conn"], value=dv("ext_dir", False))
+                ext_km = y3.slider(tx["ext_km"], 0.1, 30.0, dv("ext_km", 2.0))
+                ext_add = y4.checkbox(tx["ext_add"], value=dv("ext_add", False), help=tx["ext_add_help"])
+            else:
+                ext_cfd, ext_dir, ext_km, ext_add = 90.0, False, 0.0, True
 
-    with st.expander(t["sb_stocc"], expanded=False):
-        stocc_perc = st.slider(t["stocc_perc"], 0.0, 50.0, 1.0)
-        stocc_capex = st.slider(t["stocc_capex"], 100, 1500, 600)
+        # ---------- elettrolisi, accumulo, stoccaggio, compressione ----------
+        with tab_sys:
+            s1, s2 = st.columns(2)
+            with s1:
+                st.markdown(f"**{t['sb_bess']}**")
+                bess_on = st.toggle(t["bess_on"], value=dv("bess_on", True))
+                bess_ratio = st.slider(t["bess_ratio"], 0.0, 5.0, dv("bess_ratio", 3.0), step=0.5)
+                st.markdown(f"**{t['sb_stocc']}**")
+                stocc_perc = st.slider(t["stocc_perc"], 0.0, 50.0, dv("stocc_perc", 1.0))
+                stocc_capex = st.slider(t["stocc_capex"], 100, 1500, int(dv("stocc_capex", 600)))
+            with s2:
+                st.markdown(f"**{t['sb_ely']}**")
+                ely_auto = st.radio(t["ely_mode"], [True, False],
+                                    index=di("ely_auto", [True, False], True),
+                                    format_func=lambda k: t["ely_auto"] if k else t["ely_man"],
+                                    horizontal=True)
+                ely_pct = st.slider(t["ely_ratio"], 10, 120, int(dv("ely_pct", 60)), step=5)
+                st.markdown(f"**{t['sb_comp']}**")
+                comp_tipo = st.selectbox(t["comp_tipo"], ["standard", "booster"],
+                                         index=di("comp_tipo", ["standard", "booster"], "standard"),
+                                         format_func=lambda k: "Standard (500 bar)" if k == "standard"
+                                         else "Booster (700 bar)")
 
-    with st.expander(t["sb_comp"], expanded=False):
-        comp_tipo = st.selectbox(t["comp_tipo"], ["standard", "booster"],
-                                 format_func=lambda k: "Standard (500 bar)" if k == "standard" else "Booster (700 bar)")
+        # ---------- RED III ----------
+        with tab_red:
+            r1, r2 = st.columns(2)
+            with r1:
+                red_mensile = st.radio(t["red_scen"], [False, True],
+                                       index=di("red_mensile", [False, True], False),
+                                       format_func=lambda k: t["red_scen_month"] if k else t["red_scen_hour"])
+                red_add = st.checkbox(t["red_add"], value=dv("red_add", True))
+                red_noaid = st.checkbox(t["red_noaid"], value=dv("red_noaid", True))
+                red_zone = st.checkbox(t["red_zone"], value=dv("red_zone", True))
+            with r2:
+                st.markdown(f"**{t['red_grid_header']}**")
+                grid_max_pct = st.slider(t["red_grid_max"], 0, 100, int(dv("grid_max_pct", 0)), step=5)
+                grid_price = st.slider(t["red_grid_price"], 20.0, 300.0, dv("grid_price", 110.0))
+                grid_cert = st.checkbox(t["red_grid_cert"], value=dv("grid_cert", False))
 
-    with st.expander(t["sb_mercato"], expanded=False):
-        prezzo_h2 = st.slider(t["prezzo_h2"], 2.0, 20.0, 8.0)
-        prezzo_h2_nc = st.slider(t["prezzo_h2_nc"], 1.0, 15.0, 4.0)
+        # ---------- economia ----------
+        with tab_eco:
+            k1, k2, k3 = st.columns(3)
+            with k1:
+                st.markdown(f"**{t['energy_model']}**")
+                autoprod = st.radio(t["energy_model"], [False, True],
+                                    index=di("autoprod", [False, True], False),
+                                    format_func=lambda k: t["model_own"] if k else t["model_ppa"],
+                                    label_visibility="collapsed")
+                paga_assorbita = st.checkbox(t["pay_absorbed"], value=dv("paga_assorbita", False),
+                                             help=t["pay_help"])
+                cfd_pv = st.slider("CfD PV (€/MWh)", 30.0, 120.0, dv("cfd_pv", 60.0))
+                cfd_wind = st.slider("CfD Wind (€/MWh)", 30.0, 150.0, dv("cfd_wind", 80.0))
+                oneri_rete = st.slider(t["wheel"], 0.0, 80.0, dv("oneri_rete", 25.0))
+            with k2:
+                st.markdown("**CAPEX**")
+                capex_ely = st.slider("CAPEX Ely (€/kW)", 500, 2000, int(dv("capex_ely", 1000)))
+                capex_batt = st.slider("CAPEX BESS (€/kWh)", 100, 500, int(dv("capex_batt", 150)))
+                capex_pv_terra = st.slider("CAPEX PV terra (€/kW)", 400, 1200, int(dv("capex_pv_terra", 700)))
+                capex_pv_tetti = st.slider("CAPEX PV tetti (€/kW)", 500, 1800, int(dv("capex_pv_tetti", 1000)))
+                capex_pv_cap = st.slider("CAPEX PV capannoni (€/kW)", 500, 1600, int(dv("capex_pv_cap", 850)))
+                capex_wind_kw = st.slider("CAPEX Wind (€/kW)", 900, 2500, int(dv("capex_wind_kw", 1500)))
+            with k3:
+                st.markdown(f"**{t['sb_mercato']}**")
+                prezzo_h2 = st.slider(t["prezzo_h2"], 2.0, 20.0, dv("prezzo_h2", 8.0))
+                prezzo_h2_nc = st.slider(t["prezzo_h2_nc"], 1.0, 15.0, dv("prezzo_h2_nc", 4.0))
 
-    avvia = st.form_submit_button(tx["run"], type="primary", use_container_width=True)
+        st.markdown("")
+        avvia = st.form_submit_button(tx["run"], type="primary", use_container_width=True)
 
-st.sidebar.caption(f"⚙️ {t['numba_on'] if core.NUMBA_OK else t['numba_off']}")
+    st.caption(f"⚙️ {t['numba_on'] if core.NUMBA_OK else t['numba_off']}")
 
-if avvia:
-    st.session_state["cfg"] = True
-if not st.session_state.get("cfg"):
-    st.info(tx["waiting"])
+    if avvia:
+        st.session_state["cfg"] = dict(
+            modalita=modalita, zona=zona, target_ton=target_ton, nahv_target=nahv_target,
+            q_terra=q_terra, q_tetti=q_tetti, q_cap=q_cap, q_wind=q_wind,
+            terra_ha=terra_ha, terra_use=terra_use, terra_dens=terra_dens,
+            terra_km=terra_km, terra_modo=terra_modo,
+            tetti_m2=tetti_m2, tetti_use=tetti_use, tetti_dens=tetti_dens, tetti_resa=tetti_resa,
+            tetti_n=tetti_n, tetti_taglia=tetti_taglia, tetti_km=tetti_km, tetti_modo=tetti_modo,
+            tetti_cp=tetti_cp, tetti_ck=tetti_ck,
+            cap_m2=cap_m2, cap_use=cap_use, cap_dens=cap_dens, cap_resa=cap_resa,
+            cap_n=cap_n, cap_taglia=cap_taglia, cap_km=cap_km, cap_modo=cap_modo,
+            cap_cp=cap_cp, cap_ck=cap_ck,
+            wind_n=wind_n, wind_p=wind_p, wind_km=wind_km,
+            ext_on=ext_on, ext_mw=ext_mw, ext_fonte=ext_fonte, ext_cfd=ext_cfd,
+            ext_dir=ext_dir, ext_km=ext_km, ext_add=ext_add,
+            bess_on=bess_on, bess_ratio=bess_ratio, ely_auto=ely_auto, ely_pct=ely_pct,
+            comp_tipo=comp_tipo, stocc_perc=stocc_perc, stocc_capex=stocc_capex,
+            red_mensile=red_mensile, red_add=red_add, red_noaid=red_noaid, red_zone=red_zone,
+            grid_max_pct=grid_max_pct, grid_price=grid_price, grid_cert=grid_cert,
+            autoprod=autoprod, paga_assorbita=paga_assorbita, cfd_pv=cfd_pv, cfd_wind=cfd_wind,
+            oneri_rete=oneri_rete, capex_ely=capex_ely, capex_batt=capex_batt,
+            capex_pv_terra=capex_pv_terra, capex_pv_tetti=capex_pv_tetti,
+            capex_pv_cap=capex_pv_cap, capex_wind_kw=capex_wind_kw,
+            prezzo_h2=prezzo_h2, prezzo_h2_nc=prezzo_h2_nc,
+        )
+        st.session_state["fase"] = "risultati"
+        st.rerun()
+
     st.stop()
 
 # ==================================================================
-# POTENZE, QUOTE E DIMENSIONAMENTO
+# FASE 2 - RISULTATI
+# I parametri si rileggono dal dizionario, non dai widget: quelli non
+# esistono piu' in questa fase.
 # ==================================================================
+C = st.session_state["cfg"]
+
+nav1, nav2 = st.columns([1, 4])
+if nav1.button(tx["back"], use_container_width=True):
+    st.session_state["fase"] = "scheda"
+    st.rerun()
+nav2.caption(tx["recap"].format(
+    m=t[f"mode_{C['modalita']}"], z=t[f"zona_{C['zona']}"],
+    e=(f" · {tx['ext_serie']} {C['ext_mw']:.1f} MW" if C["ext_mw"] > 0 else "")))
+
+modalita, zona = C["modalita"], C["zona"]
+usa_superfici = modalita in ("superfici", "copertura")
+usa_domanda = modalita in ("domanda", "copertura")
+
+target_ton, nahv_target = C["target_ton"], C["nahv_target"]
+q_terra, q_tetti, q_cap, q_wind = C["q_terra"], C["q_tetti"], C["q_cap"], C["q_wind"]
+terra_ha, terra_use, terra_dens = C["terra_ha"], C["terra_use"], C["terra_dens"]
+terra_km, terra_dir = C["terra_km"], C["terra_modo"] == "diretta"
+tetti_m2, tetti_use, tetti_dens, tetti_resa = C["tetti_m2"], C["tetti_use"], C["tetti_dens"], C["tetti_resa"]
+tetti_n, tetti_taglia, tetti_km = C["tetti_n"], C["tetti_taglia"], C["tetti_km"]
+tetti_dir, tetti_cp, tetti_ck = C["tetti_modo"] == "diretta", C["tetti_cp"], C["tetti_ck"]
+cap_m2, cap_use, cap_dens, cap_resa = C["cap_m2"], C["cap_use"], C["cap_dens"], C["cap_resa"]
+cap_n, cap_taglia, cap_km = C["cap_n"], C["cap_taglia"], C["cap_km"]
+cap_dir, cap_cp, cap_ck = C["cap_modo"] == "diretta", C["cap_cp"], C["cap_ck"]
+wind_n, wind_p, wind_km = C["wind_n"], C["wind_p"], C["wind_km"]
+ext_mw, ext_cfd, ext_dir, ext_km, ext_add = C["ext_mw"], C["ext_cfd"], C["ext_dir"], C["ext_km"], C["ext_add"]
+bess_on, bess_ratio, ely_auto, ely_pct = C["bess_on"], C["bess_ratio"], C["ely_auto"], C["ely_pct"]
+comp_tipo, stocc_perc, stocc_capex = C["comp_tipo"], C["stocc_perc"], C["stocc_capex"]
+red_mensile, red_add, red_noaid, red_zone = C["red_mensile"], C["red_add"], C["red_noaid"], C["red_zone"]
+grid_max_pct, grid_price, grid_cert = C["grid_max_pct"], C["grid_price"], C["grid_cert"]
+autoprod, paga_assorbita = C["autoprod"], C["paga_assorbita"]
+cfd_pv, cfd_wind, oneri_rete = C["cfd_pv"], C["cfd_wind"], C["oneri_rete"]
+capex_ely, capex_batt = C["capex_ely"], C["capex_batt"]
+capex_pv_terra, capex_pv_tetti, capex_pv_cap = C["capex_pv_terra"], C["capex_pv_tetti"], C["capex_pv_cap"]
+capex_wind_kw, prezzo_h2, prezzo_h2_nc = C["capex_wind_kw"], C["prezzo_h2"], C["prezzo_h2_nc"]
+
+# Il profilo dell'impianto esistente si ricostruisce dai byte conservati.
+ext_norm = None
+if ext_mw > 0 and st.session_state.get("ext_raw") is not None:
+    _b = io.BytesIO(st.session_state["ext_raw"])
+    _b.name = st.session_state.get("ext_nome", "profilo.xlsx")
+    ext_norm, ext_mw, _ = core.leggi_profilo_esterno(_b, ext_mw)
+
 target_kg = float(target_ton) * 1000.0
 inc_comp, cons_comp = (0.24, 2.23) if comp_tipo == "standard" else (0.42, 4.11)
 eff_sistema = core.KWH_KG_ELY + cons_comp
