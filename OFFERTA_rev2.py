@@ -84,7 +84,7 @@ TX = {
         "recap": "**{m}** · zona {z}{e}",
         "back": "← Edit parameters",
         "recap": "**{m}** · zone {z}{e}",
-        "back": "← Uredi parametre",
+        "back": "← Modifica parametri",
         "recap": "**{m}** · cona {z}{e}",
         "tpl_head": "Il file deve avere esattamente questa struttura",
         "tpl_xlsx": "⬇️ Template Excel",
