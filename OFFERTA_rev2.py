@@ -56,6 +56,25 @@ class _Testi(dict):
 
 t = _Testi(testi(lang))
 
+# Etichette riscritte senza toccare i18n.py: "Ely" non dice nulla a un Comune,
+# e "superficie a terra" da sola non chiarisce di quali aree si parli.
+T_OVER = {
+    "it": {"sb_ely": "Elettrolizzatore",
+           "ely_size": "Taglia elettrolizzatore",
+           "sb_terra": "🌱 Superficie a terra (brownfield / utility scale)",
+           "alloc_terra": "Quota a terra — brownfield / utility scale (%)"},
+    "en": {"sb_ely": "Electrolyser",
+           "ely_size": "Electrolyser size",
+           "sb_terra": "🌱 Ground-mounted surface (brownfield / utility scale)",
+           "alloc_terra": "Ground-mounted share — brownfield / utility scale (%)"},
+    "sl": {"sb_ely": "Elektrolizer",
+           "ely_size": "Velikost elektrolizerja",
+           "sb_terra": "🌱 Površina na tleh (brownfield / utility scale)",
+           "alloc_terra": "Delež na tleh — brownfield / utility scale (%)"},
+}
+t.update(T_OVER.get(lang, T_OVER["it"]))
+
+
 # ==================================================================
 # TESTI AGGIUNTIVI (non presenti in i18n.py)
 # ==================================================================
@@ -67,6 +86,56 @@ TX = {
         "recap": "**{m}** · zone {z}{e}",
         "back": "← Uredi parametre",
         "recap": "**{m}** · cona {z}{e}",
+        "tpl_head": "Il file deve avere esattamente questa struttura",
+        "tpl_xlsx": "⬇️ Template Excel",
+        "tpl_csv": "⬇️ Template CSV",
+        "tpl_note": "Due colonne: **ora** da 0 a 8759 e **potenza_kW**, la potenza media erogata in quell'ora. Servono tutte e 8.760 le righe, senza celle vuote: dove l'impianto è fermo si scrive 0.",
+        "help_imp": "Si parte da qui. In modalità **domanda** si dichiara quanto idrogeno serve e come ripartire gli impianti fra le tre famiglie di superficie; in modalità **superfici** si dichiara ciò che è realmente disponibile e il tool calcola quanto idrogeno ne esce. Le tre famiglie sono separate perché differiscono per densità, resa e — soprattutto — costo di connessione.",
+        "help_conn": "È qui che le tre famiglie divergono di ordini di grandezza. Per ciascuna si sceglie come portare l'energia all'elettrolizzatore: una linea dedicata costa il cavidotto ma niente pedaggi, la rete pubblica costa poco all'allaccio ma paga il trasporto per vent'anni.",
+        "help_sys": "L'elettrolizzatore si dimensiona come percentuale della potenza rinnovabile installata. Piccolo, lavora molte ore ma spreca i picchi; grande, cattura tutto ma resta fermo. In automatico il tool cerca la taglia a minimo costo dell'idrogeno.",
+        "help_red": "Verifica quanta parte dell'idrogeno prodotto è certificabile come RFNBO ai sensi dell'Atto Delegato (UE) 2023/1184. Le prime tre condizioni sono un interruttore: se una manca, decade tutto. La correlazione temporale invece incide sulla quota.",
+        "help_eco": "Due modelli alternativi. In **autoproduzione** gli impianti rinnovabili si costruiscono e finiscono nel CAPEX; con un **PPA** l'energia si compra da terzi a prezzo fisso e finisce nell'OPEX.",
+        "adv": "⚙️ Parametri avanzati — densità di potenza e rese",
+        "adv_note": "Valori tecnici di progetto: cambiarli sposta il rapporto fra superficie e potenza installabile. I predefiniti sono quelli d'uso corrente e vanno bene nella grande maggioranza dei casi.",
+        "wheel_title": "Che cos'è il wheeling",
+        "wheel_md": """
+Quando l'energia viaggia sulla **rete pubblica** invece che su un cavo tuo, il gestore
+ti fa pagare il trasporto: è il *wheeling*, un pedaggio in €/MWh su ogni kilowattora
+trasportato, per tutta la vita dell'impianto.
+
+La scelta è fra due strade opposte:
+
+- **Linea diretta** — paghi il cavidotto una volta sola (CAPEX), poi trasporti gratis.
+  Conviene sulle distanze brevi e sulle potenze grandi. È anche l'unica configurazione
+  in cui la batteria è "dietro lo stesso punto di connessione" e resta conforme RED III.
+- **Rete pubblica** — paghi solo l'allaccio, ma il pedaggio ti accompagna per vent'anni.
+  Conviene su impianti sparsi e lontani, dove il cavo costerebbe più del pedaggio.
+
+Il punto di pareggio dipende quasi solo dai chilometri: sotto i 2-3 km la linea diretta
+vince quasi sempre, sopra i 10 km quasi mai.
+                """,
+        "ppa_title": "Che cos'è un PPA e perché ha senso",
+        "ppa_md": """
+Un **PPA** (*Power Purchase Agreement*) è un contratto pluriennale con cui si compra
+energia direttamente da un produttore rinnovabile a un prezzo fissato in anticipo,
+invece di prenderla dal mercato al prezzo del momento.
+
+Serve a due cose che contano molto per un elettrolizzatore:
+
+- **Toglie il rischio di prezzo.** L'elettricità è la voce dominante nel costo
+  dell'idrogeno: senza un prezzo noto, l'LCOH non è calcolabile e il progetto non è
+  finanziabile.
+- **Evita di costruire.** In autoproduzione servono capitale, aree e autorizzazioni;
+  con un PPA si compra la stessa energia rinnovabile senza immobilizzare nulla.
+
+Il rovescio: si paga per vent'anni una fornitura che in autoproduzione, dopo
+l'ammortamento, sarebbe quasi gratis. Il confronto fra i due modelli è esattamente
+ciò che questa scheda permette di fare.
+
+**Per approfondire:**
+[Come funziona un PPA](https://www.youtube.com/watch?v=eHRPzBi62y8) ·
+[PPA e mercato dell'energia](https://www.youtube.com/watch?v=SmElo2_d8mA)
+                """,
         "setup": "📝 Scheda di compilazione",
         "setup_hint": "Compila i parametri, poi avvia il dimensionamento. La simulazione gira su 8.760 ore: parte solo quando lo chiedi.",
         "run": "🚀 Avvia dimensionamento",
@@ -104,6 +173,53 @@ TX = {
         "bm_note": "Riferimenti nazionali: PNIEC 2024, consumi di idrogeno rinnovabile al 2030 (0,115 Mton all'industria, 0,252 Mton complessive). Gli equivalenti fisici sono ordini di grandezza.",
     },
     "en": {
+        "tpl_head": "The file must follow exactly this structure",
+        "tpl_xlsx": "⬇️ Excel template", "tpl_csv": "⬇️ CSV template",
+        "tpl_note": "Two columns: **ora** from 0 to 8759 and **potenza_kW**, the average power in that hour. All 8,760 rows are required, with no empty cells: write 0 where the plant is idle.",
+        "help_imp": "This is the starting point. In **demand** mode you state how much hydrogen is needed and how to split the plants across the three surface families; in **surfaces** mode you state what is actually available and the tool computes the hydrogen. The three families are kept apart because they differ in density, yield and above all connection cost.",
+        "help_conn": "This is where the three families diverge by orders of magnitude. For each one you choose how to bring the energy to the electrolyser: a dedicated line costs the cable but no tolls, the public grid is cheap to join but pays transport for twenty years.",
+        "help_sys": "The electrolyser is sized as a share of installed renewable capacity. Small, it runs many hours but wastes the peaks; large, it captures everything but sits idle. In automatic mode the tool finds the size with the lowest hydrogen cost.",
+        "help_red": "Checks how much of the hydrogen qualifies as RFNBO under Delegated Act (EU) 2023/1184. The first three conditions are a switch: if one fails, everything fails. Temporal correlation instead affects the share.",
+        "help_eco": "Two alternative models. Under **self-production** the renewable plants are built and enter CAPEX; with a **PPA** the energy is bought from third parties at a fixed price and enters OPEX.",
+        "adv": "⚙️ Advanced parameters — power density and yields",
+        "adv_note": "Design values: changing them shifts the ratio between surface and installable capacity. The defaults are current practice and fit most cases.",
+        "wheel_title": "What wheeling is",
+        "wheel_md": """
+When energy travels on the **public grid** instead of your own cable, the operator
+charges you for transport: that is *wheeling*, a toll in €/MWh on every kilowatt-hour
+carried, for the whole life of the plant.
+
+The choice is between two opposite routes:
+
+- **Direct line** — you pay the cable once (CAPEX), then transport is free. It wins over
+  short distances and large capacities. It is also the only configuration where the
+  battery sits behind the same connection point and stays RED III compliant.
+- **Public grid** — you only pay the connection, but the toll follows you for twenty
+  years. It wins for scattered, distant plants where the cable would cost more.
+
+The break-even depends almost entirely on distance: below 2-3 km the direct line nearly
+always wins, above 10 km it nearly never does.
+                """,
+        "ppa_title": "What a PPA is and why it makes sense",
+        "ppa_md": """
+A **PPA** (*Power Purchase Agreement*) is a multi-year contract to buy energy directly
+from a renewable producer at a price fixed in advance, instead of taking it from the
+market at the price of the day.
+
+It does two things that matter a lot for an electrolyser:
+
+- **It removes price risk.** Electricity is the dominant item in the cost of hydrogen:
+  without a known price the LCOH cannot be computed and the project is not bankable.
+- **It avoids building.** Self-production needs capital, land and permits; a PPA buys
+  the same renewable energy without tying up any of them.
+
+The downside: you pay for twenty years for a supply that, under self-production, would
+be nearly free once depreciated. Comparing the two models is exactly what this tab is for.
+
+**Further reading:**
+[How a PPA works](https://www.youtube.com/watch?v=eHRPzBi62y8) ·
+[PPAs and the energy market](https://www.youtube.com/watch?v=SmElo2_d8mA)
+                """,
         "setup": "📝 Input sheet", "setup_hint": "Fill in the parameters, then start the sizing. The simulation runs over 8,760 hours: it starts only when you ask.",
         "run": "🚀 Start sizing", "rerun": "🔄 Recalculate with new parameters",
         "waiting": "Fill in the sheet in the sidebar and press **Start sizing**.",
@@ -136,6 +252,50 @@ TX = {
         "bm_note": "National references: PNIEC 2024, renewable hydrogen consumption to 2030 (0.115 Mt industry, 0.252 Mt total). Physical equivalents are orders of magnitude.",
     },
     "sl": {
+        "tpl_head": "Datoteka mora imeti natanko to strukturo",
+        "tpl_xlsx": "⬇️ Predloga Excel", "tpl_csv": "⬇️ Predloga CSV",
+        "tpl_note": "Dva stolpca: **ora** od 0 do 8759 in **potenza_kW**, povprečna moč v tisti uri. Potrebnih je vseh 8.760 vrstic, brez praznih celic: kjer naprava miruje, vpišite 0.",
+        "help_imp": "Tu se začne. V načinu **povpraševanje** navedete, koliko vodika potrebujete in kako razporediti naprave med tri družine površin; v načinu **površine** navedete, kaj je dejansko na voljo. Tri družine so ločene, ker se razlikujejo po gostoti, donosu in predvsem stroških priključitve.",
+        "help_conn": "Tu se tri družine razlikujejo za velikostne razrede. Za vsako izberete, kako pripeljati energijo do elektrolizerja: namenski vod stane kabel a brez pristojbin, javno omrežje je poceni za priključitev a plačuje prenos dvajset let.",
+        "help_sys": "Elektrolizer se dimenzionira kot delež nameščene moči. Majhen dela veliko ur a zapravlja konice; velik zajame vse a pogosto miruje. V samodejnem načinu orodje poišče velikost z najnižjim stroškom vodika.",
+        "help_red": "Preveri, kolikšen del vodika je mogoče certificirati kot RFNBO po Delegirani uredbi (EU) 2023/1184. Prvi trije pogoji so stikalo: če eden ni izpolnjen, odpade vse.",
+        "help_eco": "Dva modela. Pri **lastni proizvodnji** se naprave zgradijo in gredo v CAPEX; s **PPA** se energija kupi od tretjih po fiksni ceni in gre v OPEX.",
+        "adv": "⚙️ Napredni parametri — gostota moči in donosi",
+        "adv_note": "Projektne vrednosti: sprememba premakne razmerje med površino in namestljivo močjo. Privzete vrednosti ustrezajo večini primerov.",
+        "wheel_title": "Kaj je wheeling",
+        "wheel_md": """
+Ko energija potuje po **javnem omrežju** namesto po lastnem kablu, operater zaračuna
+prenos: to je *wheeling*, pristojbina v €/MWh na vsako preneseno kilovatno uro, za vso
+življenjsko dobo naprave.
+
+Izbira je med dvema nasprotnima potema:
+
+- **Neposredni vod** — kabel plačate enkrat (CAPEX), nato je prenos brezplačen. Zmaga na
+  kratkih razdaljah in pri velikih močeh. Je tudi edina konfiguracija, v kateri je
+  baterija za istim priključnim mestom in ostaja skladna z RED III.
+- **Javno omrežje** — plačate le priključitev, pristojbina pa vas spremlja dvajset let.
+
+Prelomna točka je skoraj v celoti odvisna od razdalje: pod 2-3 km skoraj vedno zmaga
+neposredni vod, nad 10 km skoraj nikoli.
+                """,
+        "ppa_title": "Kaj je PPA in zakaj je smiseln",
+        "ppa_md": """
+**PPA** (*Power Purchase Agreement*) je večletna pogodba za nakup energije neposredno od
+proizvajalca iz obnovljivih virov po vnaprej določeni ceni.
+
+Rešuje dve stvari, ki sta za elektrolizer ključni:
+
+- **Odpravi cenovno tveganje.** Elektrika je prevladujoča postavka v ceni vodika: brez
+  znane cene LCOH ni izračunljiv in projekt ni financirljiv.
+- **Ni treba graditi.** Lastna proizvodnja zahteva kapital, zemljišča in dovoljenja.
+
+Slabost: dvajset let plačujete dobavo, ki bi bila pri lastni proizvodnji po amortizaciji
+skoraj brezplačna. Primerjava obeh modelov je prav namen tega zavihka.
+
+**Za poglobitev:**
+[Kako deluje PPA](https://www.youtube.com/watch?v=eHRPzBi62y8) ·
+[PPA in trg energije](https://www.youtube.com/watch?v=SmElo2_d8mA)
+                """,
         "setup": "📝 Vnosni list", "setup_hint": "Izpolnite parametre, nato zaženite dimenzioniranje. Simulacija teče na 8.760 urah: zažene se le na zahtevo.",
         "run": "🚀 Zaženi dimenzioniranje", "rerun": "🔄 Preračunaj z novimi parametri",
         "waiting": "Izpolnite list v stranski vrstici in pritisnite **Zaženi dimenzioniranje**.",
@@ -175,6 +335,33 @@ PNIEC_INDUSTRIA_TON = 115_000.0
 PNIEC_TOTALE_TON = 252_000.0
 # Equivalenti fisici: ordini di grandezza, non valori puntuali
 EQ_BUS_TON, EQ_CAMION_TON, EQ_FORNO_TON = 9.0, 8.0, 3000.0
+
+
+def template_csv():
+    """Template del profilo orario in CSV: nessuna dipendenza, sempre disponibile."""
+    righe = ["ora,potenza_kW"]
+    esempio = {0: "6614.52", 1: "6688.44", 2: "6687.12"}
+    righe += [f"{h},{esempio.get(h, '')}" for h in range(core.ORE)]
+    return "\n".join(righe).encode("utf-8")
+
+
+def template_xlsx():
+    """Stesso template in Excel, se la libreria e' disponibile nell'ambiente."""
+    try:
+        import openpyxl  # noqa: F401
+    except Exception:
+        return None
+    buf = io.BytesIO()
+    profilo = pd.DataFrame({"ora": np.arange(core.ORE), "potenza_kW": [None] * core.ORE})
+    profilo.loc[0:2, "potenza_kW"] = [6614.52, 6688.44, 6687.12]
+    istruzioni = pd.DataFrame({"Campo": ["Nome impianto", "Fonte", "Potenza nominale [MW]",
+                                         "Anno dei dati", "Costo energia [EUR/MWh]"],
+                               "Valore": ["Centrale di esempio", "Idroelettrico ad acqua fluente",
+                                          11.0, 2024, 90.0]})
+    with pd.ExcelWriter(buf, engine="openpyxl") as w:
+        istruzioni.to_excel(w, sheet_name="ANAGRAFICA", index=False)
+        profilo.to_excel(w, sheet_name="PROFILO", index=False)
+    return buf.getvalue()
 
 
 # ==================================================================
@@ -276,6 +463,17 @@ if st.session_state["fase"] == "scheda":
     # --- Impianto esistente: il caricamento va validato subito ---
     with st.expander(tx["ext_head"], expanded=bool(dv("ext_on", False))):
         ext_on = st.checkbox(tx["ext_on"], value=dv("ext_on", False), help=tx["ext_help"])
+
+        st.caption(f"**{tx['tpl_head']}** — {tx['tpl_note']}")
+        d1, d2, _ = st.columns([1, 1, 3])
+        _x = template_xlsx()
+        if _x:
+            d1.download_button(tx["tpl_xlsx"], _x, "H2READY_template_profilo_orario.xlsx",
+                               "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                               use_container_width=True)
+        d2.download_button(tx["tpl_csv"], template_csv(), "H2READY_template_profilo_orario.csv",
+                           "text/csv", use_container_width=True)
+
         ext_norm, ext_mw, ext_fonte = None, 0.0, "idro_fluente"
         if ext_on:
             e1, e2, e3 = st.columns([3, 2, 2])
@@ -320,12 +518,11 @@ if st.session_state["fase"] == "scheda":
 
         # ---------- impianti ----------
         with tab_imp:
-            target_ton, nahv_target = dv("target_ton", 1000), dv("nahv_target", 0)
+            st.caption(tx["help_imp"])
+            target_ton = dv("target_ton", 1000)
             if usa_domanda:
-                g1, g2 = st.columns(2)
+                g1, _ = st.columns([2, 3])
                 target_ton = g1.number_input(t["target_h2"], 1, 1000000, int(dv("target_ton", 1000)))
-                nahv_target = g2.number_input(tx["bm_nahv"], 0, 1000000, int(dv("nahv_target", 0)),
-                                              step=500, help=tx["bm_nahv_help"])
 
             q_terra = q_tetti = q_cap = q_wind = 0
             if modalita == "domanda":
@@ -343,15 +540,11 @@ if st.session_state["fase"] == "scheda":
                 terra_ha = st.number_input(t["ha"], 0.0, 10000.0, dv("terra_ha", 10.0),
                                            step=0.5) if usa_superfici else 0.0
                 terra_use = st.slider(t["use"], 10, 100, int(dv("terra_use", 90)), key="k_terra_use")
-                terra_dens = st.slider(t["dens_ha"], 0.3, 1.2, dv("terra_dens", 0.70), step=0.05)
             with p2:
                 st.markdown(f"**{t['sb_tetti']}**")
                 tetti_m2 = st.number_input(t["m2"], 0.0, 5000000.0, dv("tetti_m2", 20000.0),
                                            step=500.0, key="k_tm2") if usa_superfici else 0.0
                 tetti_use = st.slider(t["use"], 10, 100, int(dv("tetti_use", 50)), key="k_tetti_use")
-                tetti_dens = st.slider(t["dens_m2"], 0.10, 0.25, dv("tetti_dens", 0.18),
-                                       step=0.01, key="k_tetti_dens")
-                tetti_resa = st.slider(t["resa"], 70, 105, int(dv("tetti_resa", 96)), key="k_tetti_resa")
                 if usa_superfici:
                     tetti_n = st.number_input(t["n_punti"], 0, 1000, int(dv("tetti_n", 10)), key="k_tetti_n")
                     tetti_taglia = None
@@ -364,9 +557,6 @@ if st.session_state["fase"] == "scheda":
                 cap_m2 = st.number_input(t["m2"], 0.0, 5000000.0, dv("cap_m2", 50000.0),
                                          step=1000.0, key="k_cm2") if usa_superfici else 0.0
                 cap_use = st.slider(t["use"], 10, 100, int(dv("cap_use", 70)), key="k_cap_use")
-                cap_dens = st.slider(t["dens_m2"], 0.10, 0.25, dv("cap_dens", 0.18),
-                                     step=0.01, key="k_cap_dens")
-                cap_resa = st.slider(t["resa"], 70, 105, int(dv("cap_resa", 93)), key="k_cap_resa")
                 if usa_superfici:
                     cap_n = st.number_input(t["n_punti"], 0, 500, int(dv("cap_n", 3)), key="k_cap_n")
                     cap_taglia = None
@@ -374,6 +564,17 @@ if st.session_state["fase"] == "scheda":
                     cap_n = None
                     cap_taglia = st.number_input(t["taglia_media"], 10, 5000,
                                                  int(dv("cap_taglia", 500)), key="k_cap_tm")
+
+            with st.expander(tx["adv"]):
+                st.caption(tx["adv_note"])
+                v1, v2, v3 = st.columns(3)
+                terra_dens = v1.slider(t["dens_ha"], 0.3, 1.2, dv("terra_dens", 0.70), step=0.05)
+                tetti_dens = v2.slider(t["dens_m2"], 0.10, 0.25, dv("tetti_dens", 0.18),
+                                       step=0.01, key="k_tetti_dens")
+                tetti_resa = v2.slider(t["resa"], 70, 105, int(dv("tetti_resa", 96)), key="k_tetti_resa")
+                cap_dens = v3.slider(t["dens_m2"], 0.10, 0.25, dv("cap_dens", 0.18),
+                                     step=0.01, key="k_cap_dens")
+                cap_resa = v3.slider(t["resa"], 70, 105, int(dv("cap_resa", 93)), key="k_cap_resa")
 
             st.markdown("---")
             w1, w2, w3 = st.columns(3)
@@ -383,6 +584,7 @@ if st.session_state["fase"] == "scheda":
 
         # ---------- connessioni ----------
         with tab_conn:
+            st.caption(tx["help_conn"])
             def blocco_conn(titolo, pref, modo_def, km_def, cp_def, ck_def, con_punti):
                 st.markdown(f"**{titolo}**")
                 x1, x2, x3, x4 = st.columns([2, 2, 2, 2])
@@ -398,6 +600,9 @@ if st.session_state["fase"] == "scheda":
                     ck = x4.number_input(t["c_km"], 0, 500000, int(dv(f"{pref}_ck", ck_def)),
                                          step=5000, key=f"k_{pref}_ck")
                 return km, modo, cp, ck
+
+            with st.expander(tx["wheel_title"]):
+                st.markdown(tx["wheel_md"])
 
             terra_km, terra_modo, _, _ = blocco_conn(t["sb_terra"], "terra", "diretta", 2.0, 0, 0, False)
             st.markdown("---")
@@ -421,6 +626,7 @@ if st.session_state["fase"] == "scheda":
 
         # ---------- elettrolisi, accumulo, stoccaggio, compressione ----------
         with tab_sys:
+            st.caption(tx["help_sys"])
             s1, s2 = st.columns(2)
             with s1:
                 st.markdown(f"**{t['sb_bess']}**")
@@ -444,6 +650,7 @@ if st.session_state["fase"] == "scheda":
 
         # ---------- RED III ----------
         with tab_red:
+            st.caption(tx["help_red"])
             r1, r2 = st.columns(2)
             with r1:
                 red_mensile = st.radio(t["red_scen"], [False, True],
@@ -460,6 +667,10 @@ if st.session_state["fase"] == "scheda":
 
         # ---------- economia ----------
         with tab_eco:
+            st.caption(tx["help_eco"])
+            with st.expander(tx["ppa_title"]):
+                st.markdown(tx["ppa_md"])
+
             k1, k2, k3 = st.columns(3)
             with k1:
                 st.markdown(f"**{t['energy_model']}**")
@@ -492,7 +703,7 @@ if st.session_state["fase"] == "scheda":
 
     if avvia:
         st.session_state["cfg"] = dict(
-            modalita=modalita, zona=zona, target_ton=target_ton, nahv_target=nahv_target,
+            modalita=modalita, zona=zona, target_ton=target_ton,
             q_terra=q_terra, q_tetti=q_tetti, q_cap=q_cap, q_wind=q_wind,
             terra_ha=terra_ha, terra_use=terra_use, terra_dens=terra_dens,
             terra_km=terra_km, terra_modo=terra_modo,
@@ -539,7 +750,7 @@ modalita, zona = C["modalita"], C["zona"]
 usa_superfici = modalita in ("superfici", "copertura")
 usa_domanda = modalita in ("domanda", "copertura")
 
-target_ton, nahv_target = C["target_ton"], C["nahv_target"]
+target_ton = C["target_ton"]
 q_terra, q_tetti, q_cap, q_wind = C["q_terra"], C["q_tetti"], C["q_cap"], C["q_wind"]
 terra_ha, terra_use, terra_dens = C["terra_ha"], C["terra_use"], C["terra_dens"]
 terra_km, terra_dir = C["terra_km"], C["terra_modo"] == "diretta"
@@ -707,8 +918,6 @@ if usa_domanda:
     ton = R["prod_h2"] / 1000.0
     voci = [(ton / PNIEC_INDUSTRIA_TON * 100, tx["bm_pniec_ind"]),
             (ton / PNIEC_TOTALE_TON * 100, tx["bm_pniec_tot"])]
-    if nahv_target > 0:
-        voci.insert(0, (ton / nahv_target * 100, tx["bm_nahv_lbl"]))
     cols = st.columns(len(voci))
     for c, (v, lbl) in zip(cols, voci):
         c.metric(lbl, f"{v:.2f}%" if v < 10 else f"{v:.1f}%")
