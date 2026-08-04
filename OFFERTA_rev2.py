@@ -553,69 +553,75 @@ with tab_dati:
     # ==========================================================================
     # 3. SEZIONE EXPORT AL DATABASE CENTRALE (Stile Grafico)
     # ==========================================================================
-    st.divider()
-    st.header("💾 Esportazione")
-    
-    codice = st.text_input("Codice identificativo del Comune (es. 030043):", key="id_istat_export")
-    
-    if st.button("💾 Esporta nel database centrale", type="primary"):
-        if not codice:
-            st.error("Inserisci il codice identificativo prima di procedere.")
+    # ==================================================================
+
+# ESPORTAZIONE NEL DATABASE CENTRALE
+# Fuori da tab_dati: così resta visibile anche se una chiave di
+# traduzione manca dentro le schede, e non dipende da i18n.
+# ==================================================================
+st.markdown("---")
+st.header("💾 Esportazione")
+
+codice = st.text_input("Codice identificativo del Comune (es. 030043):",
+                       key="id_istat_export")
+
+if st.button("💾 Esporta nel database centrale", type="primary"):
+    if not codice:
+        st.error("Inserisci il codice identificativo prima di procedere.")
+    else:
+        payload = {
+            "ID_ISTAT": str(codice),
+            "T26_MODALITA": str(modalita),
+            "T26_ZONA": str(zona),
+            "T26_PV_TERRA_MW": float(round(R["mw"]["terra"], 2)),
+            "T26_PV_TETTI_MW": float(round(R["mw"]["tetti"], 2)),
+            "T26_PV_CAPANNONI_MW": float(round(R["mw"]["capannoni"], 2)),
+            "T26_EOLICO_MW": float(round(R["mw"]["eolico"], 2)),
+            "T26_TAGLIA_FER_INSTALLATA_MW": float(round(taglia_fer, 2)),
+            "T26_TAGLIA_ELETTROLIZZATORE_MW": float(round(R["ely_mw"], 2)),
+            "T26_CAPACITA_BESS_MWH": float(round(R["batt_mwh"], 2)),
+            "T26_PRODUZIONE_H2_TON_ANNO": float(round(R["prod_h2"] / 1000, 2)),
+            "T26_QUOTA_RFNBO_PERC": float(round(R["quota_rfnbo"], 1)),
+            "T26_CURTAILMENT_PERC": float(round(R["perc_curt"], 1)),
+            "T26_CAPEX_CONNESSIONI_EURO": float(round(R["c_conn"], 0)),
+            "T26_CAPEX_TOTALE_MLN": float(round(R["capex_tot"] / 1e6, 2)),
+            "T26_LCOH_EURO_KG": float(round(R["lcoh"], 2)),
+            "T26_CO2_EVITATA_TON_ANNO": float(round(R["co2"], 0)),
+        }
+
+        # Il target esiste solo nelle modalita' che partono dalla domanda.
+        # Se non c'e', la chiave non viene inviata affatto: lo script non
+        # scrive i campi vuoti, quindi la colonna resta com'era invece di
+        # essere sovrascritta con "N/A".
+        if usa_domanda:
+            payload["T26_TARGET_H2_TON"] = float(round(target_kg / 1000, 2))
+
+        if float(R["payback"]) < 99:
+            payload["T26_PAYBACK_ANNI"] = float(round(R["payback"], 1))
+
+        if usa_superfici:
+            payload["T26B_SUP_TERRA_HA"] = float(round(terra_ha, 2))
+            payload["T26B_SUP_TETTI_M2"] = float(round(tetti_m2, 0))
+            payload["T26B_SUP_CAPANNONI_M2"] = float(round(cap_m2, 0))
         else:
-            payload = {
-                "ID_ISTAT": str(codice),
-                "T26_MODALITA": str(modalita),
-                "T26_ZONA": str(zona),
-                "T26_TARGET_H2_TON": float(round(target_kg / 1000, 2)) if usa_domanda else "N/A",
-                "T26_PV_TERRA_MW": float(round(R["mw"]["terra"], 2)),
-                "T26_PV_TETTI_MW": float(round(R["mw"]["tetti"], 2)),
-                "T26_PV_CAPANNONI_MW": float(round(R["mw"]["capannoni"], 2)),
-                "T26_EOLICO_MW": float(round(R["mw"]["eolico"], 2)),
-                "T26_TAGLIA_FER_INSTALLATA_MW": float(round(taglia_fer, 2)),
-                "T26_TAGLIA_ELETTROLIZZATORE_MW": float(round(R["ely_mw"], 2)),
-                "T26_CAPACITA_BESS_MWH": float(round(R["batt_mwh"], 2)),
-                "T26_PRODUZIONE_H2_TON_ANNO": float(round(R["prod_h2"] / 1000, 2)),
-                "T26_QUOTA_RFNBO_PERC": float(round(R["quota_rfnbo"], 1)),
-                "T26_CURTAILMENT_PERC": float(round(R["perc_curt"], 1)),
-                "T26_CAPEX_CONNESSIONI_EURO": float(round(R["c_conn"], 0)),
-                "T26_CAPEX_TOTALE_MLN": float(round(R["capex_tot"] / 1e6, 2)),
-                "T26_LCOH_EURO_KG": float(round(R["lcoh"], 2)),
-                "T26_PAYBACK_ANNI": float(round(R["payback"], 1)) if float(R["payback"]) < 99 else "N/A",
-                "T26_CO2_EVITATA_TON_ANNO": float(round(R["co2"], 0)),
-            }
-            
-            if usa_superfici:
-                payload.update({
-                    "T26B_SUP_TERRA_HA": float(round(terra_ha, 2)),
-                    "T26B_SUP_TETTI_M2": float(round(tetti_m2, 0)),
-                    "T26B_SUP_CAPANNONI_M2": float(round(cap_m2, 0)),
-                })
+            req_exp = core.superfici_richieste(R["mw"], P)
+            payload["T26B_SUP_TERRA_HA"] = float(round(req_exp["ha_terra"], 2))
+            payload["T26B_SUP_TETTI_M2"] = float(round(req_exp["m2_tetti"], 0))
+            payload["T26B_SUP_CAPANNONI_M2"] = float(round(req_exp["m2_capannoni"], 0))
+
+        if modalita == "copertura" and target_kg > 0:
+            payload["T26_COPERTURA_PERC"] = float(round(R["prod_h2"] / target_kg * 100, 1))
+
+        try:
+            resp = requests.post(WEBHOOK_URL,
+                                 data=json.dumps(payload),
+                                 headers={"Content-Type": "application/json"},
+                                 timeout=30)
+            if resp.status_code in (200, 201):
+                st.success("✅ Dati trasmessi correttamente al database centrale.")
+                st.caption(f"Risposta del server: {resp.text}")
+                st.balloons()
             else:
-                req = core.superfici_richieste(R["mw"], P)
-                payload.update({
-                    "T26B_SUP_TERRA_HA": float(round(req["ha_terra"], 2)),
-                    "T26B_SUP_TETTI_M2": float(round(req["m2_tetti"], 0)),
-                    "T26B_SUP_CAPANNONI_M2": float(round(req["m2_capannoni"], 0)),
-                })
-                
-            if modalita == "copertura":
-                payload["T26_COPERTURA_PERC"] = float(round(R["prod_h2"] / target_kg * 100, 1)) if target_kg > 0 else 0.0
-
-            WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbwpP0x0hBnhOadXA43IieWg9EusAuhaafpyeXpyaStssDd7Qo-jwnuOttAllzz8r5JS/exec"
-
-            try:
-                headers = {"Content-Type": "application/json"}
-                resp = requests.post(
-                    WEBHOOK_URL, 
-                    data=json.dumps(payload), 
-                    headers=headers, 
-                    timeout=20
-                )
-                
-                if resp.status_code in [200, 201]:
-                    st.success("✅ Dati trasmessi correttamente al database centrale.")
-                    st.balloons()
-                else:
-                    st.error(f"Errore di sincronizzazione (Codice {resp.status_code})")
-            except Exception as e:
-                st.error(f"Errore di connessione al database: {e}")
+                st.error(f"Errore di sincronizzazione (codice {resp.status_code})")
+        except Exception as e:
+            st.error(f"Errore di connessione al database: {e}")
