@@ -6,3 +6,4 @@ requests
 openpyxl
 XlsxWriter
 numba
+st-gsheets-connection
