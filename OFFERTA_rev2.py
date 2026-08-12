@@ -383,6 +383,73 @@ st.markdown("""
     </p>
 """, unsafe_allow_html=True)
 
+# --- Comune e dati ereditati ---------------------------------------------
+H.intestazione_comune(comune, "Tool 2.6 · Dimensionamento della produzione di idrogeno")
+
+# domanda dal percorso A
+_dom_ind = H.valore(comune, "T21_FABBISOGNO_H2_TON_ANNO", 0) or 0
+_dom_flotte = H.valore(comune, "T22_FABBISOGNO_H2_TON_ANNO", 0) or 0
+_target_A = _dom_ind + _dom_flotte
+
+# superfici dal questionario 2.5, raggruppate come le tre famiglie del tool
+_mq_terra = sum(H.valore(comune, c, 0) or 0 for c in
+                ("T25_SUP_BROWNFIELD_MQ", "T25_SUP_SAU_MQ",
+                 "T25_SUP_INCOLTE_MQ", "T25_SUP_SERVITU_MQ"))
+_mq_tetti = H.valore(comune, "T25_SUP_TETTI_CIV_MQ", 0) or 0
+_mq_cap = H.valore(comune, "T25_SUP_TETTI_IND_MQ", 0) or 0
+_ha_terra = _mq_terra / 10000.0
+_mq_pubblica = H.valore(comune, "T25_SUP_PUBBLICA_MQ", 0) or 0
+_cap_rete = H.valore(comune, "T25_CAPACITA_RESIDUA_MW", 0) or 0
+_progr = H.valore(comune, "T25_PROGRAMMABILI_MW", 0) or 0
+_eolico_ok = H.vero(comune.get("T25_FLAG_EOLICO_IDONEO"))
+
+_voci, _avvisi = [], []
+if _target_A > 0:
+    _voci.append(("Domanda di idrogeno",
+                  f"{_target_A:,.1f} t/anno (industria {_dom_ind:,.1f} + flotte {_dom_flotte:,.1f})",
+                  "tool 2.1 e 2.2"))
+if _mq_terra > 0:
+    _voci.append(("Superfici a terra", f"{_ha_terra:,.1f} ha", "questionario 2.5"))
+if _mq_cap > 0:
+    _voci.append(("Coperture industriali", f"{_mq_cap:,.0f} m²", "questionario 2.5"))
+if _mq_tetti > 0:
+    _voci.append(("Coperture civili", f"{_mq_tetti:,.0f} m²", "questionario 2.5"))
+if _mq_pubblica > 0 and (_mq_terra + _mq_tetti + _mq_cap) > 0:
+    _quota_pub = _mq_pubblica / (_mq_terra + _mq_tetti + _mq_cap) * 100
+    _voci.append(("di cui su suolo pubblico",
+                  f"{_mq_pubblica/10000:,.1f} ha ({_quota_pub:.0f}% del totale)",
+                  "questionario 2.5"))
+if _cap_rete > 0:
+    _voci.append(("Capacità residua di rete", f"{_cap_rete:,.1f} MW", "questionario 2.5"))
+if _progr > 0:
+    _voci.append(("Fonti programmabili già in esercizio",
+                  f"{_progr:,.1f} MW (idroelettrico, biomasse, termovalorizzazione)",
+                  "questionario 2.5"))
+_voci.append(("Aree con ventosità adeguata", "Sì" if _eolico_ok else "No",
+              "questionario 2.5"))
+
+if _target_A == 0:
+    _avvisi.append(("warning", "Nessuna domanda rilevata dal percorso A: in modalità "
+                               "*domanda* il target va inserito a mano. Per un risultato "
+                               "attendibile conviene completare prima i tool 2.1 e 2.2."))
+if _mq_terra + _mq_tetti + _mq_cap == 0:
+    _avvisi.append(("warning", "Il questionario 2.5 non risulta compilato: le superfici "
+                               "partono dai valori predefiniti."))
+if not _eolico_ok:
+    _avvisi.append(("info", "Dal 2.5 non risultano aree con ventosità adeguata: la quota "
+                            "eolica parte da zero. Si può comunque forzare, ma il "
+                            "risultato non sarebbe realistico."))
+if _progr > 0:
+    _avvisi.append(("info", f"Il territorio dispone di {_progr:,.1f} MW di fonti "
+                            "programmabili. Se ne hai il profilo orario, caricalo nella "
+                            "sezione «Impianto già esistente»: l'energia continua cambia "
+                            "sensibilmente le ore di funzionamento dell'elettrolizzatore."))
+
+H.scheda_dati("📥 Dati ereditati dai questionari precedenti", _voci, _avvisi)
+
+_modo_sugg, _perche_modo = H.modalita_2_6(comune)
+st.info(f"**Modalità suggerita: {_modo_sugg}**\n\n{_perche_modo}")
+
 profili, esito_dati = core.carica_profili()
 
 # ==================================================================
@@ -455,7 +522,7 @@ if st.session_state["fase"] == "scheda":
     c1, c2 = st.columns([3, 2])
     with c1:
         modalita = st.radio(t["mode_label"], ["domanda", "superfici", "copertura"],
-                            index=di("modalita", ["domanda", "superfici", "copertura"], "domanda"),
+                            index=di("modalita", ["domanda", "superfici", "copertura"], _modo_sugg),
                             format_func=lambda k: t[f"mode_{k}"], horizontal=True)
     with c2:
         zona = st.selectbox(t["sb_zona"], ["nord", "sud"],
@@ -528,7 +595,9 @@ if st.session_state["fase"] == "scheda":
             target_ton = dv("target_ton", 1000)
             if usa_domanda:
                 g1, _ = st.columns([2, 3])
-                target_ton = g1.number_input(t["target_h2"], 1, 1000000, int(dv("target_ton", 1000)))
+                _t_def = int(round(_target_A)) if _target_A >= 1 else 1000
+                target_ton = g1.number_input(t["target_h2"], 1, 1000000,
+                                             int(dv("target_ton", _t_def)))
 
             q_terra = q_tetti = q_cap = q_wind = 0
             if modalita == "domanda":
@@ -537,18 +606,23 @@ if st.session_state["fase"] == "scheda":
                 q_terra = a1.slider(t["alloc_terra"], 0, 100, int(dv("q_terra", 60)))
                 q_tetti = a2.slider(t["alloc_tetti"], 0, 100, int(dv("q_tetti", 10)))
                 q_cap = a3.slider(t["alloc_cap"], 0, 100, int(dv("q_cap", 30)))
-                q_wind = a4.slider(t["alloc_wind"], 0, 100, int(dv("q_wind", 0)))
+                q_wind = a4.slider(t["alloc_wind"], 0, 100,
+                                   int(dv("q_wind", 20 if _eolico_ok else 0)),
+                                   help=None if _eolico_ok else
+                                   "Il questionario 2.5 non segnala aree con ventosità adeguata.")
                 st.markdown("---")
 
             p1, p2, p3 = st.columns(3)
             with p1:
                 st.markdown(f"**{t['sb_terra']}**")
-                terra_ha = st.number_input(t["ha"], 0.0, 10000.0, dv("terra_ha", 10.0),
+                terra_ha = st.number_input(t["ha"], 0.0, 10000.0,
+                                           dv("terra_ha", round(_ha_terra, 1) if _ha_terra > 0 else 10.0),
                                            step=0.5) if usa_superfici else 0.0
                 terra_use = st.slider(t["use"], 10, 100, int(dv("terra_use", 90)), key="k_terra_use")
             with p2:
                 st.markdown(f"**{t['sb_tetti']}**")
-                tetti_m2 = st.number_input(t["m2"], 0.0, 5000000.0, dv("tetti_m2", 20000.0),
+                tetti_m2 = st.number_input(t["m2"], 0.0, 5000000.0,
+                                           dv("tetti_m2", float(_mq_tetti) if _mq_tetti > 0 else 20000.0),
                                            step=500.0, key="k_tm2") if usa_superfici else 0.0
                 tetti_use = st.slider(t["use"], 10, 100, int(dv("tetti_use", 50)), key="k_tetti_use")
                 if usa_superfici:
@@ -560,7 +634,8 @@ if st.session_state["fase"] == "scheda":
                                                    int(dv("tetti_taglia", 50)), key="k_tetti_tm")
             with p3:
                 st.markdown(f"**{t['sb_cap']}**")
-                cap_m2 = st.number_input(t["m2"], 0.0, 5000000.0, dv("cap_m2", 50000.0),
+                cap_m2 = st.number_input(t["m2"], 0.0, 5000000.0,
+                                         dv("cap_m2", float(_mq_cap) if _mq_cap > 0 else 50000.0),
                                          step=1000.0, key="k_cm2") if usa_superfici else 0.0
                 cap_use = st.slider(t["use"], 10, 100, int(dv("cap_use", 70)), key="k_cap_use")
                 if usa_superfici:
@@ -585,7 +660,8 @@ if st.session_state["fase"] == "scheda":
             st.markdown("---")
             w1, w2, w3 = st.columns(3)
             w1.markdown(f"**{t['sb_wind']}**")
-            wind_n = w2.number_input(t["wind_n"], 0, 100, int(dv("wind_n", 0))) if usa_superfici else 0
+            wind_n = w2.number_input(t["wind_n"], 0, 100,
+                                     int(dv("wind_n", 1 if _eolico_ok else 0))) if usa_superfici else 0
             wind_p = w3.slider(t["wind_p"], 0.5, 8.0, dv("wind_p", 3.0), step=0.5) if usa_superfici else 3.0
 
         # ---------- connessioni ----------
@@ -906,6 +982,12 @@ if ext_mw > 0:
     if n_iter > 1:
         st.caption(tx["iter"].format(k=n_iter))
 
+if _cap_rete > 0 and R["ely_mw"] > _cap_rete:
+    st.warning(f"L'elettrolizzatore dimensionato ({R['ely_mw']:,.1f} MW) supera la capacità "
+               f"residua di rete dichiarata nel questionario 2.5 ({_cap_rete:,.1f} MW). "
+               "La connessione va verificata con il distributore prima di procedere: è "
+               "spesso il vincolo che determina i tempi dell'intero progetto.")
+
 # ==================================================================
 # KPI PRINCIPALI
 # ==================================================================
@@ -1180,12 +1262,11 @@ with tab_dati:
 st.markdown("---")
 st.header("💾 Esportazione")
 
-codice = st.text_input("Codice identificativo del Comune (es. 030043):", key="id_istat_export")
+codice = H.testo(comune, H.COL_ID)
+st.caption(f"I dati verranno associati a {H.testo(comune, H.COL_NOME)} (ID {codice}).")
 
 if st.button("💾 Esporta nel database centrale", type="primary"):
-    if not codice:
-        st.error("Inserisci il codice identificativo prima di procedere.")
-    else:
+    if True:
         payload = {
             "ID_ISTAT": str(codice),
             "T26_MODALITA": str(modalita),
@@ -1235,3 +1316,7 @@ if st.button("💾 Esporta nel database centrale", type="primary"):
                        "sono stati scritti: controlla il foglio prima di ripetere l'invio.")
         except Exception as e:
             st.error(f"Errore di connessione al database: {e}")
+
+st.divider()
+st.subheader("Prosegui il percorso")
+H.mostra_prossimi_tool(comune, lingua=lang)
