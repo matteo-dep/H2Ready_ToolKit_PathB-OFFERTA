@@ -74,6 +74,7 @@ REGOLE_LIVELLO = {
 # Contatto mostrato quando uno strumento è accessibile solo su richiesta.
 CONTATTO_PROGETTO = "matteo.depiccoli@ape.fvg.it"
 
+# Compatibilità: i nomi tradotti si ottengono con nome_percorso("A")
 NOMI_PERCORSO = {"A": "Domanda e usi finali",
                  "B": "Offerta e produzione",
                  "C": "Transito e logistica"}
@@ -94,6 +95,178 @@ TESTIMONI = {
     "2.8": ["T28_CAPACITA_KG_GIORNO", "T28_TAGLIA_HRS"],
 }
 
+
+# =============================================================================
+# TESTI (it / en / sl)
+# La lingua si imposta con imposta_lingua("sl") oppure passandola a
+# blocco_accesso(..., lingua="sl"). Resta valida per tutta la sessione.
+# =============================================================================
+
+LINGUA_PREDEFINITA = "it"
+
+TESTI = {
+    "percorso_A": {"it": "Domanda e usi finali", "en": "Demand and end uses",
+                   "sl": "Povpraševanje in končne rabe"},
+    "percorso_B": {"it": "Offerta e produzione", "en": "Supply and production",
+                   "sl": "Ponudba in proizvodnja"},
+    "percorso_C": {"it": "Transito e logistica", "en": "Transit and logistics",
+                   "sl": "Tranzit in logistika"},
+
+    "liv_L0": {"it": "Assessment preliminare non completato: va compilato il questionario 1.1.",
+               "en": "Preliminary assessment not completed: questionnaire 1.1 must be filled in.",
+               "sl": "Predhodna ocena ni zaključena: izpolniti je treba vprašalnik 1.1."},
+    "liv_L1": {"it": "Si sviluppa un solo percorso, quello con il punteggio più alto. Gli "
+                     "strumenti di dimensionamento sono accessibili su richiesta al gruppo di progetto.",
+               "en": "Only one pathway is developed, the one with the highest score. Sizing "
+                     "tools are available on request to the project team.",
+               "sl": "Razvije se le ena pot, tista z najvišjo oceno. Orodja za dimenzioniranje "
+                     "so na voljo na zahtevo pri projektni skupini."},
+    "liv_L2": {"it": "Si sviluppano fino a due percorsi, quelli con il punteggio più alto. Gli "
+                     "strumenti di dimensionamento sono liberi, con supporto disponibile; gli "
+                     "strumenti H2 FAST su richiesta.",
+               "en": "Up to two pathways are developed, those with the highest scores. Sizing "
+                     "tools are open, with support available; H2 FAST tools on request.",
+               "sl": "Razvijeta se do dve poti, tisti z najvišjima ocenama. Orodja za "
+                     "dimenzioniranje so prosto dostopna, s podporo; orodja H2 FAST na zahtevo."},
+    "liv_L3": {"it": "Si sviluppano tutti i percorsi che superano la soglia, con piena "
+                     "autonomia su ogni strumento, H2 FAST compreso.",
+               "en": "All pathways above threshold are developed, with full autonomy on every "
+                     "tool, including H2 FAST.",
+               "sl": "Razvijejo se vse poti nad pragom, s polno samostojnostjo pri vseh "
+                     "orodjih, vključno s H2 FAST."},
+
+    "mot_soglia": {"it": "Punteggio {p}, soglia minima {s}.",
+                   "en": "Score {p}, minimum threshold {s}.",
+                   "sl": "Ocena {p}, najnižji prag {s}."},
+    "mot_uno": {"it": "Il livello L1 consente di sviluppare un solo percorso, assegnato a "
+                      "quello con il punteggio più alto.",
+                "en": "Level L1 allows only one pathway, assigned to the highest score.",
+                "sl": "Raven L1 dopušča le eno pot, dodeljeno najvišji oceni."},
+    "mot_max": {"it": "Il livello {l} consente di sviluppare {n} percorsi, assegnati a quelli "
+                      "con il punteggio più alto.",
+                "en": "Level {l} allows {n} pathways, assigned to the highest scores.",
+                "sl": "Raven {l} dopušča {n} poti, dodeljeni najvišjim ocenam."},
+    "mot_no12": {"it": "Questionario 1.2 non compilato.",
+                 "en": "Questionnaire 1.2 not completed.",
+                 "sl": "Vprašalnik 1.2 ni izpolnjen."},
+
+    "acc_intro": {"it": "Per procedere serve il **codice identificativo del Comune**, lo stesso "
+                        "usato nei questionari 1.1 e 1.2. I parametri già raccolti verranno "
+                        "caricati automaticamente negli strumenti di calcolo.",
+                  "en": "To proceed you need the **municipality identification code**, the same "
+                        "used in questionnaires 1.1 and 1.2. Data already collected will be "
+                        "loaded automatically into the calculation tools.",
+                  "sl": "Za nadaljevanje potrebujete **identifikacijsko kodo občine**, isto kot "
+                        "v vprašalnikih 1.1 in 1.2. Že zbrani podatki bodo samodejno naloženi "
+                        "v orodja za izračun."},
+    "acc_codice": {"it": "Codice identificativo", "en": "Identification code",
+                   "sl": "Identifikacijska koda"},
+    "acc_apri": {"it": "Apri lo strumento", "en": "Open the tool", "sl": "Odpri orodje"},
+    "acc_nontrovato": {"it": "Codice non trovato nel database. Verifica di aver completato il "
+                             "questionario 1.1, oppure controlla il codice inserito.",
+                       "en": "Code not found in the database. Check that questionnaire 1.1 has "
+                             "been completed, or verify the code entered.",
+                       "sl": "Kode ni v bazi. Preverite, ali je vprašalnik 1.1 izpolnjen, ali "
+                             "preverite vneseno kodo."},
+    "acc_l0": {"it": "Il Comune non ha ancora un livello di maturità assegnato: completa prima "
+                     "il questionario 1.1.",
+               "en": "The municipality has no maturity level yet: please complete questionnaire 1.1 first.",
+               "sl": "Občina še nima dodeljene ravni zrelosti: najprej izpolnite vprašalnik 1.1."},
+    "acc_percorso_ko": {"it": "Percorso {p} ({n}) non attivo per questo Comune. {m}",
+                        "en": "Pathway {p} ({n}) is not active for this municipality. {m}",
+                        "sl": "Pot {p} ({n}) za to občino ni aktivna. {m}"},
+    "acc_errore_foglio": {"it": "Impossibile leggere il foglio dati.",
+                          "en": "Unable to read the data sheet.",
+                          "sl": "Podatkovnega lista ni mogoče prebrati."},
+    "acc_cambia": {"it": "Cambia Comune", "en": "Change municipality", "sl": "Zamenjaj občino"},
+    "acc_simulazione": {"it": "Modalità simulazione: i dati non verranno collegati ad alcun Comune.",
+                        "en": "Simulation mode: data will not be linked to any municipality.",
+                        "sl": "Način simulacije: podatki ne bodo povezani z nobeno občino."},
+    "acc_senza_dati": {"it": "Procedi senza dati (solo simulazione)",
+                       "en": "Proceed without data (simulation only)",
+                       "sl": "Nadaljuj brez podatkov (samo simulacija)"},
+
+    "str_no": {"it": "Strumento {e}: non disponibile al livello {l}.",
+               "en": "{e} tool: not available at level {l}.",
+               "sl": "Orodje {e}: ni na voljo na ravni {l}."},
+    "str_avanzato": {"it": "di dimensionamento avanzato", "en": "advanced sizing",
+                     "sl": "za napredno dimenzioniranje"},
+    "str_fast": {"it": "H2 FAST", "en": "H2 FAST", "sl": "H2 FAST"},
+    "str_supporto": {"it": "Strumento di dimensionamento: al livello L2 è disponibile il supporto "
+                           "tecnico del gruppo di progetto ({c}). Puoi procedere in autonomia, ma "
+                           "per usare i risultati in un atto formale conviene una verifica congiunta.",
+                     "en": "Sizing tool: at level L2 technical support from the project team is "
+                           "available ({c}). You may proceed on your own, but a joint review is "
+                           "advisable before using the results in a formal document.",
+                     "sl": "Orodje za dimenzioniranje: na ravni L2 je na voljo tehnična podpora "
+                           "projektne skupine ({c}). Lahko nadaljujete samostojno, vendar je pred "
+                           "uporabo rezultatov v uradnem dokumentu priporočljiv skupni pregled."},
+    "sbl_richiesta": {"it": "Strumento {e}: al livello {l} l'accesso avviene su richiesta al gruppo "
+                            "di progetto. Scrivi a **{c}** indicando il codice del Comune: riceverai "
+                            "il codice di sblocco insieme alle indicazioni per interpretare i risultati.",
+                      "en": "{e} tool: at level {l} access is granted on request to the project team. "
+                            "Write to **{c}** quoting the municipality code: you will receive the "
+                            "unlock code together with guidance on interpreting the results.",
+                      "sl": "Orodje {e}: na ravni {l} je dostop mogoč na zahtevo pri projektni "
+                            "skupini. Pišite na **{c}** in navedite kodo občine: prejeli boste kodo "
+                            "za odklep skupaj z navodili za razlago rezultatov."},
+    "sbl_non_conf": {"it": "Sblocco non ancora configurato su questa applicazione.",
+                     "en": "Unlocking is not configured on this application yet.",
+                     "sl": "Odklepanje na tej aplikaciji še ni nastavljeno."},
+    "sbl_campo": {"it": "Codice di sblocco", "en": "Unlock code", "sl": "Koda za odklep"},
+    "sbl_bottone": {"it": "Sblocca lo strumento", "en": "Unlock the tool", "sl": "Odkleni orodje"},
+    "sbl_ko": {"it": "Codice di sblocco non valido.", "en": "Invalid unlock code.",
+               "sl": "Neveljavna koda za odklep."},
+
+    "link_no_foglio": {"it": "Elenco degli strumenti non configurato: aggiungi il foglio LINK al "
+                             "file master.",
+                       "en": "Tool list not configured: add the LINK sheet to the master file.",
+                       "sl": "Seznam orodij ni nastavljen: dodajte list LINK v glavno datoteko."},
+    "link_richiesta": {"it": "su richiesta a {c}", "en": "on request to {c}",
+                       "sl": "na zahtevo pri {c}"},
+    "link_supporto": {"it": "supporto tecnico disponibile", "en": "technical support available",
+                      "sl": "tehnična podpora na voljo"},
+
+    "avz_progress": {"it": "{n} di {t} strumenti compilati", "en": "{n} of {t} tools completed",
+                     "sl": "{n} od {t} orodij izpolnjenih"},
+    "int_maturita": {"it": "Maturità", "en": "Maturity", "sl": "Zrelost"},
+    "int_profilo": {"it": "Profilo", "en": "Profile", "sl": "Profil"},
+    "sch_vuota": {"it": "Nessun dato disponibile dai questionari precedenti: i parametri vanno "
+                        "inseriti a mano.",
+                  "en": "No data available from previous questionnaires: parameters must be "
+                        "entered manually.",
+                  "sl": "Iz prejšnjih vprašalnikov ni podatkov: parametre je treba vnesti ročno."},
+    "sch_nota": {"it": "Tutti i valori restano modificabili con i controlli sottostanti.",
+                 "en": "All values remain editable with the controls below.",
+                 "sl": "Vse vrednosti je mogoče spremeniti s spodnjimi kontrolniki."},
+}
+
+
+def imposta_lingua(codice):
+    """Fissa la lingua per tutta la sessione. Accetta 'it', 'en', 'sl'."""
+    if codice in ("it", "en", "sl"):
+        st.session_state["h2ready_lang"] = codice
+
+
+def lingua_corrente():
+    return st.session_state.get("h2ready_lang", LINGUA_PREDEFINITA)
+
+
+def TT(chiave, **valori):
+    """Testo tradotto nella lingua di sessione, con eventuali segnaposto."""
+    voce = TESTI.get(chiave, {})
+    testo_tradotto = voce.get(lingua_corrente()) or voce.get("it") or chiave
+    return testo_tradotto.format(**valori) if valori else testo_tradotto
+
+
+def nome_percorso(lettera):
+    return TT(f"percorso_{lettera}")
+
+
+def descrizione_livello(liv):
+    return TT(f"liv_{liv}")
+
+
 # =============================================================================
 # LETTURA DEL FOGLIO
 # =============================================================================
@@ -101,6 +274,19 @@ TESTIMONI = {
 @st.cache_data(ttl=30, show_spinner=False)
 def _leggi(foglio=None):
     """ttl breve: un tool a valle deve vedere subito i dati appena salvati a monte."""
+    try:
+        cfg = st.secrets["connections"]["gsheets"]
+        ha_spreadsheet = "spreadsheet" in cfg
+    except Exception:
+        ha_spreadsheet = False
+    if not ha_spreadsheet:
+        raise RuntimeError(
+            "Foglio dati non configurato su questa applicazione.\n\n"
+            "Su share.streamlit.io: Settings -> Secrets, incollare il blocco "
+            "[connections.gsheets] con la chiave 'spreadsheet' e le credenziali "
+            "del service account. Ogni app ha i propri Secrets: non si ereditano "
+            "dalle altre applicazioni del toolkit."
+        )
     conn = st.connection("gsheets", type=GSheetsConnection)
     kwargs = {"ttl": 0}
     if foglio:
@@ -111,9 +297,17 @@ def _leggi(foglio=None):
 
 
 def _pulisci_id(valore) -> str:
-    """Uniforma il codice: toglie spazi e conserva gli zeri iniziali."""
-    testo = re.sub(r"[^0-9A-Za-z]", "", str(valore or "").strip())
-    return testo
+    """Uniforma il codice per il confronto.
+
+    Toglie spazi e punteggiatura, conserva gli zeri iniziali e ignora le
+    maiuscole: cosi' "GemonaH2" e "gemona h2" sono lo stesso Comune.
+    Se dopo la pulizia non resta nulla - capita con identificativi fatti di soli
+    simboli, come "?????" - si confronta la stringa originale, altrimenti quei
+    Comuni non sarebbero raggiungibili.
+    """
+    grezzo = str(valore or "").strip()
+    ripulito = re.sub(r"[^0-9A-Za-z]", "", grezzo)
+    return (ripulito or grezzo).lower()
 
 
 def carica_riga(id_istat):
@@ -219,10 +413,9 @@ def intestazione_comune(riga, sottotitolo=""):
         c1.markdown(f"### {nome}")
         if sottotitolo:
             c1.caption(sottotitolo)
-        c2.metric("Maturità", livello(riga))
-        p = punteggi(riga)
-        c3.metric("Profilo", "".join(l for l, s in percorsi_disponibili(riga).items()
-                                     if s["aperto"]) or "n.d.")
+        c2.metric(TT("int_maturita"), livello(riga))
+        c3.metric(TT("int_profilo"), "".join(l for l, s in percorsi_disponibili(riga).items()
+                                             if s["aperto"]) or "n.d.")
 
 
 def scheda_dati(titolo, voci, avvisi=None):
@@ -232,8 +425,7 @@ def scheda_dati(titolo, voci, avvisi=None):
     """
     with st.expander(titolo, expanded=True):
         if not voci:
-            st.info("Nessun dato disponibile dai questionari precedenti: "
-                    "i parametri vanno inseriti a mano.")
+            st.info(TT("sch_vuota"))
         else:
             for etichetta, valore_txt, origine in voci:
                 st.markdown(f"- **{etichetta}**: {valore_txt}  "
@@ -241,7 +433,7 @@ def scheda_dati(titolo, voci, avvisi=None):
                             unsafe_allow_html=True)
         for tipo, messaggio in (avvisi or []):
             (st.warning if tipo == "warning" else st.info)(messaggio)
-        st.caption("Tutti i valori restano modificabili con i controlli sottostanti.")
+        st.caption(TT("sch_nota"))
 
 # =============================================================================
 # SELEZIONE AUTOMATICA DELLA MODALITÀ
@@ -380,14 +572,10 @@ def percorsi_disponibili(riga) -> dict:
     regola = REGOLE_LIVELLO[liv]
     valori = punteggi(riga)
 
-    # Ordina per margine sulla soglia, non per punteggio assoluto: le tre scale
-    # non sono omogenee, quindi 10 su C (soglia 8) vale più di 12 su B (soglia 13).
-    def _margine(l):
-        p = valori.get(l)
-        if p is None:
-            return -999
-        return p - SOGLIE_PERCORSO.get(l, 13.0)
-    ordinati = sorted(("A", "B", "C"), key=lambda l: (-_margine(l), l))
+    # Quando il livello limita il numero di percorsi, vincono quelli con il
+    # punteggio piu' alto in valore assoluto; a parita' vale l'ordine A, B, C.
+    ordinati = sorted(("A", "B", "C"),
+                      key=lambda l: (-(valori.get(l) if valori.get(l) is not None else -999), l))
 
     esito = {}
     aperti = 0
@@ -395,21 +583,18 @@ def percorsi_disponibili(riga) -> dict:
         p = valori.get(lettera)
         if p is None:
             esito[lettera] = {"aperto": False, "punteggio": None,
-                              "motivo": "Questionario 1.2 non compilato."}
+                              "motivo": TT("mot_no12")}
             continue
         soglia = SOGLIE_PERCORSO.get(lettera, 13.0)
         if p < soglia:
             esito[lettera] = {"aperto": False, "punteggio": p,
-                              "motivo": f"Punteggio {p:g}, soglia minima {soglia:g}."}
+                              "motivo": TT("mot_soglia", p=f"{p:g}", s=f"{soglia:g}")}
             continue
         if aperti >= regola["max_percorsi"]:
             if regola["max_percorsi"] == 1:
-                motivo = ("Il livello L1 consente di sviluppare un solo percorso, "
-                          "assegnato a quello con il punteggio più alto.")
+                motivo = TT("mot_uno")
             else:
-                motivo = (f"Il livello {liv} consente di sviluppare "
-                          f"{regola['max_percorsi']} percorsi, assegnati a quelli "
-                          "con il punteggio più alto.")
+                motivo = TT("mot_max", l=liv, n=regola["max_percorsi"])
             esito[lettera] = {"aperto": False, "punteggio": p, "motivo": motivo}
             continue
         esito[lettera] = {"aperto": True, "punteggio": p, "motivo": ""}
@@ -439,18 +624,18 @@ def accesso_strumento(riga, categoria="base") -> str:
 # LINK AI TOOL SUCCESSIVI
 # =============================================================================
 
-@st.cache_data(ttl=300, show_spinner=False)
+@st.cache_data(ttl=60, show_spinner=False)
 def _tabella_link(foglio="LINK"):
     """Legge il foglio LINK del master. Colonne attese:
-       tool | nome | url | percorso | livello_min | avanzato | ordine
+       tool | nome | url | percorso | categoria | ordine
+
+    Non nasconde gli errori: se la scheda non si legge, chi la sta configurando
+    deve vedere il motivo, non un elenco vuoto.
     """
-    try:
-        conn = st.connection("gsheets", type=GSheetsConnection)
-        df = conn.read(worksheet=foglio, ttl=0)
-        df.columns = [str(c).strip().lower() for c in df.columns]
-        return df.dropna(how="all")
-    except Exception:
-        return pd.DataFrame()
+    conn = st.connection("gsheets", type=GSheetsConnection)
+    df = conn.read(worksheet=foglio, ttl=0)
+    df.columns = [str(c).strip().lower() for c in df.columns]
+    return df.dropna(how="all")
 
 
 def url_con_contesto(url, id_istat, lingua=None) -> str:
@@ -471,10 +656,19 @@ def mostra_prossimi_tool(riga, lingua=None, foglio="LINK"):
     dove categoria vale "base", "avanzato" o "fast". Il generatore di Action Plan
     non va inserito nel foglio: e' uno strumento interno al gruppo di progetto.
     """
-    tabella = _tabella_link(foglio)
+    try:
+        tabella = _tabella_link(foglio)
+    except Exception as e:
+        st.error(f"{TT('link_no_foglio')}\n\n`{e}`")
+        return
     if tabella.empty:
-        st.info("Elenco degli strumenti non configurato: aggiungi il foglio LINK "
-                "al file master.")
+        st.info(TT("link_no_foglio"))
+        return
+
+    mancanti = [c for c in ("tool", "url") if c not in tabella.columns]
+    if mancanti:
+        st.error(f"Nel foglio {foglio} mancano le colonne: {', '.join(mancanti)}. "
+                 f"Colonne trovate: {', '.join(tabella.columns)}")
         return
 
     stato = percorsi_disponibili(riga)
@@ -504,12 +698,12 @@ def mostra_prossimi_tool(riga, lingua=None, foglio="LINK"):
             bloccato, motivo = True, stato[percorso]["motivo"]
         elif autonomia == "no":
             bloccato = True
-            motivo = (f"Strumento {'H2 FAST' if categoria == 'fast' else 'avanzato'}: "
-                      f"non disponibile al livello {liv}.")
+            motivo = TT("str_no", e=TT("str_fast") if categoria == "fast"
+                        else TT("str_avanzato"), l=liv)
         elif autonomia == "richiesta":
-            nota = f"  ·  su richiesta a {CONTATTO_PROGETTO}"
+            nota = "  ·  " + TT("link_richiesta", c=CONTATTO_PROGETTO)
         elif categoria == "avanzato" and liv == "L2":
-            nota = "  ·  supporto tecnico disponibile"
+            nota = "  ·  " + TT("link_supporto")
 
         etichetta = f"{codice} - {nome}"
         if fatti.get(codice):
@@ -541,7 +735,7 @@ def tool_completati(riga) -> dict:
 def mostra_avanzamento(riga):
     fatti = tool_completati(riga)
     totale = sum(1 for v in fatti.values() if v)
-    st.progress(totale / len(fatti), text=f"{totale} di {len(fatti)} strumenti compilati")
+    st.progress(totale / len(fatti), text=TT("avz_progress", n=totale, t=len(fatti)))
     colonne = st.columns(5)
     for i, (codice, ok) in enumerate(fatti.items()):
         colonne[i % 5].markdown(f"{'✅' if ok else '⬜'} **{codice}**")
@@ -564,6 +758,8 @@ def blocco_accesso(titolo_tool, percorso=None, avanzato=False, categoria=None,
     """
     if categoria is None:
         categoria = "avanzato" if avanzato else "base"
+    if lingua:
+        imposta_lingua(lingua)
 
     if "h2ready_riga" in st.session_state:
         riga = st.session_state["h2ready_riga"]
@@ -571,20 +767,18 @@ def blocco_accesso(titolo_tool, percorso=None, avanzato=False, categoria=None,
             c1, c2, c3 = st.columns([2, 1, 1])
             c1.markdown(f"**{testo(riga, COL_NOME, 'Comune')}** "
                         f"· ID {testo(riga, COL_ID)}")
-            c2.markdown(f"Maturità **{livello(riga)}**")
-            if c3.button("Cambia Comune", use_container_width=True):
+            c2.markdown(f"{TT('int_maturita')} **{livello(riga)}**")
+            if c3.button(TT("acc_cambia"), use_container_width=True):
                 del st.session_state["h2ready_riga"]
                 st.rerun()
         return riga
 
     if st.session_state.get("h2ready_manuale"):
-        st.warning("Modalità simulazione: i dati non verranno collegati ad alcun Comune.")
+        st.warning(TT("acc_simulazione"))
         return pd.Series(dtype=object) if consenti_manuale else None
 
     st.subheader(titolo_tool)
-    st.markdown("Per procedere serve il **codice identificativo del Comune**, lo stesso "
-                "usato nei questionari 1.1 e 1.2. I parametri già raccolti verranno "
-                "caricati automaticamente negli strumenti di calcolo.")
+    st.markdown(TT("acc_intro"))
 
     preimpostato = ""
     try:
@@ -592,54 +786,53 @@ def blocco_accesso(titolo_tool, percorso=None, avanzato=False, categoria=None,
     except Exception:
         pass
 
-    codice = st.text_input("Codice identificativo", value=preimpostato,
+    codice = st.text_input(TT("acc_codice"), value=preimpostato,
                            placeholder="es. 030025")
-    procedi = st.button("Apri lo strumento", type="primary")
+    procedi = st.button(TT("acc_apri"), type="primary")
 
     if consenti_manuale:
-        if st.button("Procedi senza dati (solo simulazione)"):
+        if st.button(TT("acc_senza_dati")):
             st.session_state["h2ready_manuale"] = True
             st.rerun()
 
     if not (procedi or (preimpostato and codice == preimpostato and codice)):
         return None
 
-    riga = carica_riga(codice)
+    try:
+        riga = carica_riga(codice)
+    except Exception as e:
+        st.error(f"{TT('acc_errore_foglio')}\n\n{e}")
+        return None
     if riga is None:
-        st.error("Codice non trovato nel database. Verifica di aver completato il "
-                 "questionario 1.1, oppure controlla il codice inserito.")
+        st.error(TT("acc_nontrovato"))
         return None
 
     liv = livello(riga)
     if liv == "L0":
-        st.error("Il Comune non ha ancora un livello di maturità assegnato: "
-                 "completa prima il questionario 1.1.")
+        st.error(TT("acc_l0"))
         return None
 
     if percorso in ("A", "B", "C"):
         stato = percorsi_disponibili(riga)[percorso]
         if not stato["aperto"]:
-            st.error(f"Percorso {percorso} ({NOMI_PERCORSO[percorso]}) non attivo per "
-                     f"questo Comune. {stato['motivo']}")
-            st.caption(REGOLE_LIVELLO[liv]["descrizione"])
+            st.error(TT("acc_percorso_ko", p=percorso, n=nome_percorso(percorso),
+                        m=stato["motivo"]))
+            st.caption(descrizione_livello(liv))
             return None
 
     autonomia = accesso_strumento(riga, categoria)
-    etichetta = "H2 FAST" if categoria == "fast" else "di dimensionamento avanzato"
+    etichetta = TT("str_fast") if categoria == "fast" else TT("str_avanzato")
 
     if autonomia == "no":
-        st.error(f"Strumento {etichetta}: non disponibile al livello {liv}.")
-        st.caption(REGOLE_LIVELLO[liv]["descrizione"])
+        st.error(TT("str_no", e=etichetta, l=liv))
+        st.caption(descrizione_livello(liv))
         return None
 
     if autonomia == "richiesta" and not _sblocco_concesso(categoria, liv, etichetta):
         return None
 
     if autonomia == "libero" and categoria == "avanzato" and liv == "L2":
-        st.info("Strumento di dimensionamento: al livello L2 è disponibile il supporto "
-                f"tecnico del gruppo di progetto ({CONTATTO_PROGETTO}). Puoi procedere "
-                "in autonomia, ma per usare i risultati in un atto formale conviene una "
-                "verifica congiunta.")
+        st.info(TT("str_supporto", c=CONTATTO_PROGETTO))
 
     st.session_state["h2ready_riga"] = riga
     st.rerun()
@@ -654,10 +847,7 @@ def _sblocco_concesso(categoria, liv, etichetta) -> bool:
     Se il segreto non e' configurato, lo strumento resta chiuso e viene mostrato
     solo il contatto: meglio un blocco netto di un lucchetto che non chiude.
     """
-    st.warning(f"Strumento {etichetta}: al livello {liv} l'accesso avviene su richiesta "
-               f"al gruppo di progetto. Scrivi a **{CONTATTO_PROGETTO}** indicando il "
-               "codice del Comune: riceverai il codice di sblocco insieme alle "
-               "indicazioni per interpretare i risultati.")
+    st.warning(TT("sbl_richiesta", e=etichetta, l=liv, c=CONTATTO_PROGETTO))
 
     atteso = None
     try:
@@ -666,17 +856,17 @@ def _sblocco_concesso(categoria, liv, etichetta) -> bool:
         atteso = None
 
     if not atteso:
-        st.caption("Sblocco non ancora configurato su questa applicazione.")
+        st.caption(TT("sbl_non_conf"))
         return False
 
     chiave = f"h2ready_sbloccato_{categoria}"
     if st.session_state.get(chiave):
         return True
 
-    inserito = st.text_input("Codice di sblocco", type="password")
-    if st.button("Sblocca lo strumento"):
+    inserito = st.text_input(TT("sbl_campo"), type="password")
+    if st.button(TT("sbl_bottone")):
         if str(inserito).strip() == str(atteso).strip():
             st.session_state[chiave] = True
             return True
-        st.error("Codice di sblocco non valido.")
+        st.error(TT("sbl_ko"))
     return False
