@@ -44,7 +44,10 @@ COL_SCORE = {"A": "T12_SCORE_A", "B": "T12_SCORE_B", "C": "T12_SCORE_C"}
 SOGLIE_MATURITA = [(3, 8, "L1"), (9, 14, "L2"), (15, 999, "L3")]
 
 # Punteggio minimo per attivare un percorso, qualunque sia il livello.
-SOGLIA_PERCORSO = 15.0
+# Sui questionari 1.2 gia' raccolti i punteggi osservati stanno fra 18 e 35
+# (A: 21-29, B: 20-35, C: 18-28). Una soglia a 15 non escluderebbe nessuno:
+# 20 e' un punto di partenza da verificare su piu' Comuni reali.
+SOGLIA_PERCORSO = 20.0
 
 # Quanti percorsi si aprono per livello, e con quale autonomia sui tool avanzati.
 REGOLE_LIVELLO = {
@@ -168,10 +171,166 @@ def valore(riga, colonna, predefinito=None, minimo=None, massimo=None):
     return n
 
 
+def vero(valore) -> bool:
+    """True se il campo esprime un sì, in italiano, inglese o sloveno."""
+    return str(valore).strip().lower() in ("si", "sì", "yes", "y", "true", "vero",
+                                           "da", "1", "1.0", "x")
+
+
+def contestazioni(riga) -> str:
+    """Il 2.5 restituisce QUALI tecnologie sono contestate, non un sì/no."""
+    valore = riga.get("T25_FLAG_CONTESTAZIONI") if riga is not None else None
+    if vuoto(valore):
+        return ""
+    testo_v = str(valore).strip()
+    return "" if testo_v.lower() in ("no", "n", "nessuna", "none", "false", "0", "ne") else testo_v
+
+
 def testo(riga, colonna, predefinito=""):
     if riga is None or colonna not in riga.index or vuoto(riga[colonna]):
         return predefinito
     return str(riga[colonna]).strip()
+
+
+def vero(valore) -> bool:
+    """True se il campo esprime un sì, in italiano, inglese o sloveno."""
+    return str(valore).strip().lower() in ("si", "sì", "yes", "y", "true", "vero",
+                                           "da", "1", "1.0", "x")
+
+
+def intestazione_comune(riga, sottotitolo=""):
+    """Barra con il nome del Comune, sempre in cima al tool."""
+    if riga is None:
+        return
+    nome = testo(riga, COL_NOME, "Comune")
+    with st.container(border=True):
+        c1, c2, c3 = st.columns([3, 1, 1])
+        c1.markdown(f"### {nome}")
+        if sottotitolo:
+            c1.caption(sottotitolo)
+        c2.metric("Maturità", livello(riga))
+        p = punteggi(riga)
+        c3.metric("Profilo", "".join(l for l, s in percorsi_disponibili(riga).items()
+                                     if s["aperto"]) or "n.d.")
+
+
+def scheda_dati(titolo, voci, avvisi=None):
+    """Elenco dei dati ereditati dai questionari precedenti.
+
+    voci: lista di (etichetta, valore_formattato, origine)
+    """
+    with st.expander(titolo, expanded=True):
+        if not voci:
+            st.info("Nessun dato disponibile dai questionari precedenti: "
+                    "i parametri vanno inseriti a mano.")
+        else:
+            for etichetta, valore_txt, origine in voci:
+                st.markdown(f"- **{etichetta}**: {valore_txt}  "
+                            f"<span style='opacity:.55;font-size:.85em'>({origine})</span>",
+                            unsafe_allow_html=True)
+        for tipo, messaggio in (avvisi or []):
+            (st.warning if tipo == "warning" else st.info)(messaggio)
+        st.caption("Tutti i valori restano modificabili con i controlli sottostanti.")
+
+# =============================================================================
+# SELEZIONE AUTOMATICA DELLA MODALITÀ
+# =============================================================================
+
+def modalita_2_6(riga):
+    """Suggerisce la modalità del Tool 2.6 dai dati già raccolti.
+
+    Restituisce (chiave, motivazione) dove chiave è "domanda", "superfici"
+    o "copertura". La scelta resta dell'utente: questo è solo il preselezionato.
+    """
+    domanda = ((valore(riga, "T21_FABBISOGNO_H2_TON_ANNO", 0) or 0) +
+               (valore(riga, "T22_FABBISOGNO_H2_TON_ANNO", 0) or 0))
+    superfici = sum(valore(riga, c, 0) or 0 for c in (
+        "T25_SUP_BROWNFIELD_MQ", "T25_SUP_TETTI_IND_MQ", "T25_SUP_TETTI_CIV_MQ",
+        "T25_SUP_INCOLTE_MQ", "T25_SUP_SAU_MQ", "T25_SUP_SERVITU_MQ"))
+
+    if domanda > 0 and superfici > 0:
+        return "copertura", (
+            f"Sono disponibili sia una domanda di {domanda:,.1f} t/anno dal percorso A "
+            f"sia {superfici/10000:,.1f} ettari di superfici dal questionario 2.5: la "
+            "modalità **copertura** misura quanta parte del fabbisogno il territorio "
+            "riesce a soddisfare da solo.")
+    if domanda > 0:
+        return "domanda", (
+            f"È nota una domanda di {domanda:,.1f} t/anno dal percorso A, ma non "
+            "risultano superfici censite: la modalità **domanda** parte dal fabbisogno "
+            "e calcola quanti impianti servirebbero.")
+    if superfici > 0:
+        return "superfici", (
+            f"Sono censiti {superfici/10000:,.1f} ettari di superfici disponibili ma non "
+            "una domanda locale: la modalità **superfici** parte da ciò che c'è e "
+            "calcola quanto idrogeno se ne ricava.")
+    return "domanda", (
+        "Non risultano né una domanda dal percorso A né superfici dal questionario 2.5. "
+        "Si parte dalla modalità **domanda** inserendo i valori a mano; per un risultato "
+        "attendibile conviene però completare prima i tool 2.1, 2.2 e il questionario 2.5.")
+
+
+# Soglie della selezione automatica del 2.8. Vanno tarate sui casi reali.
+TGM_TRANSITO = 1000        # mezzi/giorno oltre i quali il nodo è di puro transito
+TGM_MINIMO = 200           # sotto questa soglia il traffico non regge da solo
+
+
+def modalita_2_8(riga):
+    """Suggerisce la vocazione della stazione: transito, hub o valley.
+
+    Le chiavi coincidono con quelle di CONFIGURAZIONI nel Tool 2.8."""
+    tgm = valore(riga, "T27_TGM_CAMION", 0) or 0
+    afir = vero(riga.get("T27_FLAG_AFIR_GAP")) if riga is not None else False
+    hub = vero(riga.get("T27_FLAG_HUB_MERCI")) if riga is not None else False
+    retro = vero(riga.get("T27_FLAG_ACCORDI_FILIERA")) if riga is not None else False
+    hta = vero(riga.get("T27_FLAG_SINERGIA_HTA")) if riga is not None else False
+    produzione = valore(riga, "T26_PRODUZIONE_H2_TON_ANNO", 0) or 0
+
+    # 1. produzione locale o distretto industriale accanto: la stazione si integra
+    if hta or produzione > 0:
+        dettaglio = []
+        if hta:
+            dettaglio.append("il nodo confina con un distretto Hard-to-Abate")
+        if produzione > 0:
+            dettaglio.append(f"il percorso B prevede una produzione locale di "
+                             f"{produzione:,.1f} t/anno")
+        return "valley", (
+            "Configurazione **H2 integrata**: " + " e ".join(dettaglio) +
+            ". La stazione può condividere produzione e stoccaggio con l'utenza "
+            "industriale invece di costruirseli, il che cambia radicalmente il "
+            "conto economico.")
+
+    # 2. hub merci o accordi di filiera: domanda catturata, non intercettata
+    if hub or retro:
+        return "hub", (
+            "Configurazione **hub intermodale**: la presenza di porti, interporti o "
+            "accordi di filiera garantisce una domanda concentrata e prevedibile. "
+            "La quota di cattura è più alta che su un nodo di solo transito, perché "
+            "i mezzi rientrano in deposito.")
+
+    # 3. traffico di attraversamento
+    if tgm >= TGM_TRANSITO:
+        motivo = f"il traffico rilevato è di {tgm:,.0f} mezzi pesanti al giorno"
+        if afir:
+            motivo += (" e il sito colma un vuoto della rete AFIR, che impone una "
+                       "stazione ogni 200 km")
+        return "transito", (
+            "Configurazione **transito**: " + motivo + ". La domanda va intercettata "
+            "lungo la direttrice, quindi la quota di cattura dipende da quante altre "
+            "stazioni insistono sulla stessa tratta.")
+
+    if afir:
+        return "transito", (
+            f"Configurazione **transito**: il traffico è contenuto ({tgm:,.0f} mezzi al "
+            "giorno) ma il sito colma un vuoto della rete AFIR, che impone una stazione "
+            "ogni 200 km. È l'obbligo normativo, più che il volume, a giustificare "
+            "l'investimento.")
+
+    return "transito", (
+        f"Dati insufficienti per una preselezione: il traffico rilevato "
+        f"({tgm:,.0f} mezzi/giorno) è sotto la soglia di sostenibilità e non risultano "
+        "hub logistici né sinergie industriali. Verificare il questionario 2.7 prima "
+        "di procedere.")
 
 # =============================================================================
 # LIVELLO, PUNTEGGI, PERCORSI
