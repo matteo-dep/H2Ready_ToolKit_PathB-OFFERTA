@@ -41,27 +41,38 @@ COL_NOME = "NOME_COMUNE"
 COL_MATURITA = "T11_LIVELLO_MATURITA"
 COL_SCORE = {"A": "T12_SCORE_A", "B": "T12_SCORE_B", "C": "T12_SCORE_C"}
 
-SOGLIE_MATURITA = [(3, 8, "L1"), (9, 14, "L2"), (15, 999, "L3")]
+SOGLIE_MATURITA = [(5, 8, "L1"), (9, 14, "L2"), (15, 999, "L3")]
 
-# Punteggio minimo per attivare un percorso, qualunque sia il livello.
-# Sui questionari 1.2 gia' raccolti i punteggi osservati stanno fra 18 e 35
-# (A: 21-29, B: 20-35, C: 18-28). Una soglia a 15 non escluderebbe nessuno:
-# 20 e' un punto di partenza da verificare su piu' Comuni reali.
-SOGLIA_PERCORSO = 20.0
+# Punteggio minimo per attivare ciascun percorso, dal questionario 1.2.
+# Le soglie sono diverse perché le tre scale non sono omogenee: il valore
+# assoluto di un punteggio C non è confrontabile con quello di un punteggio B.
+SOGLIE_PERCORSO = {"A": 10.0, "B": 13.0, "C": 8.0}
 
-# Quanti percorsi si aprono per livello, e con quale autonomia sui tool avanzati.
+# Quanti percorsi si aprono per livello, e con quale autonomia sugli strumenti.
+# Gli strumenti sono di tre categorie:
+#   base        questionari e tool di raccolta (2.1, 2.2, 2.3, 2.5, 2.7)
+#   avanzato    dimensionamento tecnico-economico (2.6, 2.8)
+#   fast        strumenti H2 FAST, di livello specialistico
+# Per ciascuna categoria: "libero" | "richiesta" | "no".
 REGOLE_LIVELLO = {
-    "L0": {"max_percorsi": 0, "avanzati": "no",
-           "descrizione": "Assessment preliminare non completato."},
-    "L1": {"max_percorsi": 1, "avanzati": "no",
-           "descrizione": "Si sviluppa un solo percorso, quello con il punteggio più alto."},
-    "L2": {"max_percorsi": 2, "avanzati": "richiesta",
-           "descrizione": "Si sviluppano fino a due percorsi. I tool avanzati sono "
-                          "disponibili su richiesta, con accompagnamento."},
-    "L3": {"max_percorsi": 3, "avanzati": "libero",
+    "L0": {"max_percorsi": 0, "avanzati": "no", "fast": "no",
+           "descrizione": "Assessment preliminare non completato: va compilato il "
+                          "questionario 1.1."},
+    "L1": {"max_percorsi": 1, "avanzati": "richiesta", "fast": "no",
+           "descrizione": "Si sviluppa un solo percorso, quello con il punteggio più "
+                          "alto. Gli strumenti di dimensionamento sono accessibili su "
+                          "richiesta al gruppo di progetto."},
+    "L2": {"max_percorsi": 2, "avanzati": "libero", "fast": "richiesta",
+           "descrizione": "Si sviluppano fino a due percorsi, quelli con il punteggio "
+                          "più alto. Gli strumenti di dimensionamento sono liberi, con "
+                          "supporto disponibile; gli strumenti H2 FAST su richiesta."},
+    "L3": {"max_percorsi": 3, "avanzati": "libero", "fast": "libero",
            "descrizione": "Si sviluppano tutti i percorsi che superano la soglia, con "
-                          "piena autonomia sui tool avanzati."},
+                          "piena autonomia su ogni strumento, H2 FAST compreso."},
 }
+
+# Contatto mostrato quando uno strumento è accessibile solo su richiesta.
+CONTATTO_PROGETTO = "matteo.depiccoli@ape.fvg.it"
 
 NOMI_PERCORSO = {"A": "Domanda e usi finali",
                  "B": "Offerta e produzione",
@@ -369,9 +380,14 @@ def percorsi_disponibili(riga) -> dict:
     regola = REGOLE_LIVELLO[liv]
     valori = punteggi(riga)
 
-    # ordina per punteggio decrescente; a parità vale l'ordine A, B, C
-    ordinati = sorted(("A", "B", "C"),
-                      key=lambda l: (-valori.get(l, -1), l))
+    # Ordina per margine sulla soglia, non per punteggio assoluto: le tre scale
+    # non sono omogenee, quindi 10 su C (soglia 8) vale più di 12 su B (soglia 13).
+    def _margine(l):
+        p = valori.get(l)
+        if p is None:
+            return -999
+        return p - SOGLIE_PERCORSO.get(l, 13.0)
+    ordinati = sorted(("A", "B", "C"), key=lambda l: (-_margine(l), l))
 
     esito = {}
     aperti = 0
@@ -381,10 +397,10 @@ def percorsi_disponibili(riga) -> dict:
             esito[lettera] = {"aperto": False, "punteggio": None,
                               "motivo": "Questionario 1.2 non compilato."}
             continue
-        if p < SOGLIA_PERCORSO:
+        soglia = SOGLIE_PERCORSO.get(lettera, 13.0)
+        if p < soglia:
             esito[lettera] = {"aperto": False, "punteggio": p,
-                              "motivo": f"Punteggio {p:g}, soglia minima "
-                                        f"{SOGLIA_PERCORSO:g}."}
+                              "motivo": f"Punteggio {p:g}, soglia minima {soglia:g}."}
             continue
         if aperti >= regola["max_percorsi"]:
             if regola["max_percorsi"] == 1:
@@ -402,8 +418,22 @@ def percorsi_disponibili(riga) -> dict:
 
 
 def avanzati_consentiti(riga) -> str:
-    """'no' | 'richiesta' | 'libero'"""
+    """'no' | 'richiesta' | 'libero' per gli strumenti di dimensionamento."""
     return REGOLE_LIVELLO[livello(riga)]["avanzati"]
+
+
+def accesso_strumento(riga, categoria="base") -> str:
+    """Autonomia del Comune su una categoria di strumento.
+
+    categoria: "base" | "avanzato" | "fast"
+    Restituisce "libero", "richiesta" oppure "no".
+    """
+    regola = REGOLE_LIVELLO[livello(riga)]
+    if categoria == "avanzato":
+        return regola["avanzati"]
+    if categoria == "fast":
+        return regola["fast"]
+    return "libero"
 
 # =============================================================================
 # LINK AI TOOL SUCCESSIVI
@@ -435,15 +465,20 @@ def url_con_contesto(url, id_istat, lingua=None) -> str:
 
 
 def mostra_prossimi_tool(riga, lingua=None, foglio="LINK"):
-    """Elenca i tool successivi: attivi come pulsanti, bloccati in grigio col motivo."""
+    """Elenca gli strumenti: attivi come pulsanti, bloccati in grigio col motivo.
+
+    Il foglio LINK ha colonne: tool | nome | url | percorso | categoria | ordine
+    dove categoria vale "base", "avanzato" o "fast". Il generatore di Action Plan
+    non va inserito nel foglio: e' uno strumento interno al gruppo di progetto.
+    """
     tabella = _tabella_link(foglio)
     if tabella.empty:
-        st.info("Elenco dei tool non configurato: aggiungi il foglio LINK al file master.")
+        st.info("Elenco degli strumenti non configurato: aggiungi il foglio LINK "
+                "al file master.")
         return
 
     stato = percorsi_disponibili(riga)
     liv = livello(riga)
-    autonomia = avanzati_consentiti(riga)
     fatti = tool_completati(riga)
     id_istat = testo(riga, COL_ID)
 
@@ -454,17 +489,30 @@ def mostra_prossimi_tool(riga, lingua=None, foglio="LINK"):
         codice = str(r.get("tool", "")).strip()
         nome = str(r.get("nome", codice)).strip()
         percorso = str(r.get("percorso", "")).strip().upper()
-        avanzato = str(r.get("avanzato", "")).strip().lower() in ("si", "sì", "true", "1", "x")
         url = str(r.get("url", "")).strip()
 
-        bloccato, motivo = False, ""
+        categoria = str(r.get("categoria", "base")).strip().lower()
+        if categoria not in ("base", "avanzato", "fast"):
+            # compatibilita' con la vecchia colonna "avanzato" a crocetta
+            categoria = "avanzato" if str(r.get("avanzato", "")).strip().lower() in (
+                "si", "sì", "true", "1", "x") else "base"
+
+        autonomia = accesso_strumento(riga, categoria)
+        bloccato, motivo, nota = False, "", ""
+
         if percorso in ("A", "B", "C") and not stato[percorso]["aperto"]:
             bloccato, motivo = True, stato[percorso]["motivo"]
-        elif avanzato and autonomia == "no":
-            bloccato, motivo = True, (f"Strumento avanzato: non disponibile al livello {liv}.")
+        elif autonomia == "no":
+            bloccato = True
+            motivo = (f"Strumento {'H2 FAST' if categoria == 'fast' else 'avanzato'}: "
+                      f"non disponibile al livello {liv}.")
+        elif autonomia == "richiesta":
+            nota = f"  ·  su richiesta a {CONTATTO_PROGETTO}"
+        elif categoria == "avanzato" and liv == "L2":
+            nota = "  ·  supporto tecnico disponibile"
 
         etichetta = f"{codice} - {nome}"
-        if codice in fatti and fatti[codice]:
+        if fatti.get(codice):
             etichetta = "✔ " + etichetta
 
         if bloccato:
@@ -474,11 +522,9 @@ def mostra_prossimi_tool(riga, lingua=None, foglio="LINK"):
                 f"<b>{etichetta}</b><br><span style='font-size:.85rem'>{motivo}</span></div>",
                 unsafe_allow_html=True)
         else:
-            nota = ""
-            if avanzato and autonomia == "richiesta":
-                nota = "  (strumento avanzato: consigliato con accompagnamento)"
             st.link_button(etichetta + nota, url_con_contesto(url, id_istat, lingua),
                            use_container_width=True)
+
 
 # =============================================================================
 # AVANZAMENTO
@@ -504,14 +550,21 @@ def mostra_avanzamento(riga):
 # BLOCCO DI ACCESSO
 # =============================================================================
 
-def blocco_accesso(titolo_tool, percorso=None, avanzato=False,
+def blocco_accesso(titolo_tool, percorso=None, avanzato=False, categoria=None,
                    consenti_manuale=False, lingua=None):
     """Chiede l'ID_ISTAT e restituisce la riga del Comune; None finché manca.
 
-    percorso: 'A' | 'B' | 'C' -> verifica che il Comune vi abbia accesso
-    avanzato: True se il tool è uno strumento avanzato
+    percorso: "A" | "B" | "C" -> verifica che il Comune vi abbia accesso
+    categoria: "base" | "avanzato" | "fast" -> verifica l'autonomia sul livello.
+               Se non indicata, avanzato=True equivale a categoria="avanzato".
     consenti_manuale: se True offre di procedere senza dati (solo simulazione)
+
+    Fermando l'esecuzione prima che i widget esistano, i valori del Comune sono
+    gia' disponibili quando gli slider vengono creati.
     """
+    if categoria is None:
+        categoria = "avanzato" if avanzato else "base"
+
     if "h2ready_riga" in st.session_state:
         riga = st.session_state["h2ready_riga"]
         with st.container(border=True):
@@ -526,7 +579,7 @@ def blocco_accesso(titolo_tool, percorso=None, avanzato=False,
 
     if st.session_state.get("h2ready_manuale"):
         st.warning("Modalità simulazione: i dati non verranno collegati ad alcun Comune.")
-        return None if not consenti_manuale else pd.Series(dtype=object)
+        return pd.Series(dtype=object) if consenti_manuale else None
 
     st.subheader(titolo_tool)
     st.markdown("Per procedere serve il **codice identificativo del Comune**, lo stesso "
@@ -539,7 +592,8 @@ def blocco_accesso(titolo_tool, percorso=None, avanzato=False,
     except Exception:
         pass
 
-    codice = st.text_input("Codice ID_ISTAT", value=preimpostato, placeholder="es. 030025")
+    codice = st.text_input("Codice identificativo", value=preimpostato,
+                           placeholder="es. 030025")
     procedi = st.button("Apri lo strumento", type="primary")
 
     if consenti_manuale:
@@ -570,14 +624,59 @@ def blocco_accesso(titolo_tool, percorso=None, avanzato=False,
             st.caption(REGOLE_LIVELLO[liv]["descrizione"])
             return None
 
-    if avanzato and avanzati_consentiti(riga) == "no":
-        st.error(f"Strumento avanzato non disponibile al livello {liv}.")
+    autonomia = accesso_strumento(riga, categoria)
+    etichetta = "H2 FAST" if categoria == "fast" else "di dimensionamento avanzato"
+
+    if autonomia == "no":
+        st.error(f"Strumento {etichetta}: non disponibile al livello {liv}.")
         st.caption(REGOLE_LIVELLO[liv]["descrizione"])
         return None
-    if avanzato and avanzati_consentiti(riga) == "richiesta":
-        st.info("Strumento avanzato: al livello L2 è previsto un accompagnamento "
-                "tecnico. Puoi procedere, ma verifica i risultati con il referente "
-                "di progetto.")
+
+    if autonomia == "richiesta" and not _sblocco_concesso(categoria, liv, etichetta):
+        return None
+
+    if autonomia == "libero" and categoria == "avanzato" and liv == "L2":
+        st.info("Strumento di dimensionamento: al livello L2 è disponibile il supporto "
+                f"tecnico del gruppo di progetto ({CONTATTO_PROGETTO}). Puoi procedere "
+                "in autonomia, ma per usare i risultati in un atto formale conviene una "
+                "verifica congiunta.")
 
     st.session_state["h2ready_riga"] = riga
     st.rerun()
+
+
+def _sblocco_concesso(categoria, liv, etichetta) -> bool:
+    """Strumento accessibile solo su richiesta: chiede il codice di sblocco.
+
+    Il codice si imposta nei Secrets dell'app:
+        [h2ready]
+        codice_sblocco = "..."
+    Se il segreto non e' configurato, lo strumento resta chiuso e viene mostrato
+    solo il contatto: meglio un blocco netto di un lucchetto che non chiude.
+    """
+    st.warning(f"Strumento {etichetta}: al livello {liv} l'accesso avviene su richiesta "
+               f"al gruppo di progetto. Scrivi a **{CONTATTO_PROGETTO}** indicando il "
+               "codice del Comune: riceverai il codice di sblocco insieme alle "
+               "indicazioni per interpretare i risultati.")
+
+    atteso = None
+    try:
+        atteso = st.secrets["h2ready"]["codice_sblocco"]
+    except Exception:
+        atteso = None
+
+    if not atteso:
+        st.caption("Sblocco non ancora configurato su questa applicazione.")
+        return False
+
+    chiave = f"h2ready_sbloccato_{categoria}"
+    if st.session_state.get(chiave):
+        return True
+
+    inserito = st.text_input("Codice di sblocco", type="password")
+    if st.button("Sblocca lo strumento"):
+        if str(inserito).strip() == str(atteso).strip():
+            st.session_state[chiave] = True
+            return True
+        st.error("Codice di sblocco non valido.")
+    return False
