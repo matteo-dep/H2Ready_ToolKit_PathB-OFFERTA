@@ -39,6 +39,12 @@ st.set_page_config(page_title="H2READY - Produzione idrogeno verde", layout="wid
 
 lang = LINGUE[st.sidebar.selectbox(testi("it")["lang_label"], list(LINGUE.keys()))]
 
+import h2ready as H
+
+comune = H.blocco_accesso("Tool 2.6 — Produzione di idrogeno verde",
+                          percorso="B", avanzato=True, lingua=lang)
+if comune is None:
+    st.stop()
 
 class _Testi(dict):
     """Una chiave di traduzione mancante non deve uccidere la pagina.
