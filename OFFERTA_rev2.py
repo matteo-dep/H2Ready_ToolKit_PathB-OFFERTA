@@ -35,13 +35,13 @@ from i18n import LINGUE, testi
 
 WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbwpP0x0hBnhOadXA43IieWg9EusAuhaafpyeXpyaStssDd7Qo-jwnuOttAllzz8r5JS/exec"
 
-st.set_page_config(page_title="H2READY - Produzione idrogeno verde", layout="wide")
+st.set_page_config(page_title="H2READY TOOLKIT - Tool 2.6: Produzione idrogeno verde", layout="wide")
 
 lang = LINGUE[st.sidebar.selectbox(testi("it")["lang_label"], list(LINGUE.keys()))]
 
 import h2ready as H
 
-comune = H.blocco_accesso("Tool 2.6 — Produzione di idrogeno verde",
+comune = H.blocco_accesso("H2READY TOOLKIT - Tool 2.6: Produzione di idrogeno verde",
                           percorso="B", avanzato=True, lingua=lang)
 if comune is None:
     st.stop()
