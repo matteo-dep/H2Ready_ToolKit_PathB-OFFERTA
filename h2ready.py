@@ -27,6 +27,7 @@ nei propri Secrets, perché ogni app Streamlit è isolata.
 """
 
 import re
+from urllib.parse import quote
 
 import pandas as pd
 import streamlit as st
@@ -236,6 +237,8 @@ TESTI = {
                   "en": "No data available from previous questionnaires: parameters must be "
                         "entered manually.",
                   "sl": "Iz prejšnjih vprašalnikov ni podatkov: parametre je treba vnesti ročno."},
+    "prosegui": {"it": "Prosegui il percorso", "en": "Continue your pathway",
+                 "sl": "Nadaljujte svojo pot"},
     "sch_nota": {"it": "Tutti i valori restano modificabili con i controlli sottostanti.",
                  "en": "All values remain editable with the controls below.",
                  "sl": "Vse vrednosti je mogoče spremeniti s spodnjimi kontrolniki."},
@@ -639,11 +642,17 @@ def _tabella_link(foglio="LINK"):
 
 
 def url_con_contesto(url, id_istat, lingua=None) -> str:
-    """Aggiunge ?id=...&lang=... così il tool successivo non richiede il codice."""
+    """Aggiunge ?id=...&lang=... così il tool successivo non richiede il codice.
+
+    L'identificativo viaggia nella sua forma originale, solo codificata per
+    l'URL: la normalizzazione serve al confronto, non al trasporto. Passare la
+    versione ripulita significherebbe consegnare al tool successivo un codice
+    diverso da quello che l'utente ha scritto.
+    """
     if not url:
         return ""
     separatore = "&" if "?" in url else "?"
-    coda = f"id={_pulisci_id(id_istat)}"
+    coda = "id=" + quote(str(id_istat or "").strip(), safe="")
     if lingua:
         coda += f"&lang={lingua}"
     return f"{url}{separatore}{coda}"
@@ -718,6 +727,30 @@ def mostra_prossimi_tool(riga, lingua=None, foglio="LINK"):
         else:
             st.link_button(etichetta + nota, url_con_contesto(url, id_istat, lingua),
                            use_container_width=True)
+
+
+
+def dopo_salvataggio(riga, lingua=None):
+    """Da chiamare subito dopo un'esportazione riuscita.
+
+    Rilegge la riga del Comune e mostra i passi successivi. Senza questo, il
+    tool appena completato risulta ancora da compilare, perché la riga in
+    sessione è quella caricata all'ingresso e la lettura del foglio è in cache.
+    """
+    st.cache_data.clear()
+    aggiornata = None
+    try:
+        aggiornata = carica_riga(testo(riga, COL_ID))
+    except Exception:
+        aggiornata = None
+    if aggiornata is not None:
+        st.session_state["h2ready_riga"] = aggiornata
+        riga = aggiornata
+
+    st.divider()
+    st.subheader(TT("prosegui"))
+    mostra_prossimi_tool(riga, lingua=lingua)
+    return riga
 
 
 # =============================================================================
