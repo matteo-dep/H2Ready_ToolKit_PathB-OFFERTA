@@ -1302,6 +1302,7 @@ if st.button("💾 Esporta nel database centrale", type="primary"):
         if modalita == "copertura" and target_kg > 0:
             payload["T26_COPERTURA_PERC"] = float(round(R["prod_h2"] / target_kg * 100, 1))
 
+        salvato = False
         try:
             resp = requests.post(WEBHOOK_URL, data=json.dumps(payload),
                                  headers={"Content-Type": "application/json"}, timeout=60)
@@ -1309,18 +1310,15 @@ if st.button("💾 Esporta nel database centrale", type="primary"):
                 st.success("✅ Dati trasmessi correttamente al database centrale.")
                 st.caption(f"Risposta del server: {resp.text}")
                 st.balloons()
+                salvato = True
             else:
                 st.error(f"Errore di sincronizzazione (codice {resp.status_code})")
         except requests.exceptions.ReadTimeout:
             st.warning("⏳ Il server non ha risposto in tempo. Quasi sempre significa che i dati "
                        "sono stati scritti: controlla il foglio prima di ripetere l'invio.")
+            salvato = True
         except Exception as e:
             st.error(f"Errore di connessione al database: {e}")
 
-st.divider()
-st.subheader("Prosegui il percorso")
-if resp.status_code in (200, 201):
-                st.success("✅ Dati trasmessi correttamente al database centrale.")
-                st.caption(f"Risposta del server: {resp.text}")
-                st.balloons()
-                H.dopo_salvataggio(comune, lingua=lang)      # <-- aggiungere
+        if salvato:
+            H.dopo_salvataggio(comune, lingua=lang)
